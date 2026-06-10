@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Onboarding\OnboardingController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -12,7 +13,8 @@ require __DIR__.'/auth.php';
 
 // Onboarding - requiere auth pero NO requiere organización
 Route::middleware(['auth'])->group(function () {
-    Route::get('/onboarding', fn () => inertia('Onboarding/Create'))->name('onboarding');
+    Route::get('/onboarding', [OnboardingController::class, 'create'])->name('onboarding');
+    Route::post('/onboarding', [OnboardingController::class, 'store'])->name('onboarding.store');
 });
 
 // Dashboard del negocio - requiere auth Y organización activa
