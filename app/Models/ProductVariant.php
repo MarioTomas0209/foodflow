@@ -5,9 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Product extends Model
+class ProductVariant extends Model
 {
     use HasUlids;
 
@@ -15,13 +14,9 @@ class Product extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'organization_id',
-        'category_id',
+        'product_id',
         'name',
-        'description',
         'price',
-        'has_variants',
-        'image',
         'is_active',
         'sort_order',
     ];
@@ -33,23 +28,12 @@ class Product extends Model
     {
         return [
             'price' => 'decimal:2',
-            'has_variants' => 'boolean',
             'is_active' => 'boolean',
         ];
     }
 
-    public function organization(): BelongsTo
+    public function product(): BelongsTo
     {
-        return $this->belongsTo(Organization::class);
-    }
-
-    public function category(): BelongsTo
-    {
-        return $this->belongsTo(Category::class);
-    }
-
-    public function variants(): HasMany
-    {
-        return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
+        return $this->belongsTo(Product::class);
     }
 }
