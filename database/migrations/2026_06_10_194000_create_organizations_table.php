@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('city')->nullable();
             $table->string('state')->nullable();
             $table->string('logo')->nullable();
-            $table->enum('status', ['active', 'inactive', 'suspended']);
+            $table->enum('status', ['active', 'inactive', 'suspended'])->default('active');
             $table->json('settings')->nullable();
             $table->timestamps();
         });
