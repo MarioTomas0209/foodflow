@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { Config } from 'ziggy-js';
 
 export interface Organization {
     id: string;
@@ -62,6 +63,7 @@ export interface SharedData {
     auth: Auth;
     currentOrganization?: Organization;
     flash?: FlashMessages;
+    ziggy: Config & { location: string };
     [key: string]: unknown;
 }
 

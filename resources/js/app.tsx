@@ -7,6 +7,8 @@ import { route as routeFn } from 'ziggy-js';
 import { FlashToaster } from './components/flash-toaster';
 import { Toaster } from './components/ui/sonner';
 import { initializeTheme } from './hooks/use-appearance';
+import { listenForZiggyUpdates, setupZiggy } from './lib/ziggy';
+import { type SharedData } from './types';
 
 declare global {
     const route: typeof routeFn;
@@ -18,6 +20,9 @@ createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob('./pages/**/*.tsx')),
     setup({ el, App, props }) {
+        setupZiggy((props.initialPage.props as SharedData).ziggy);
+        listenForZiggyUpdates();
+
         const root = createRoot(el);
 
         root.render(

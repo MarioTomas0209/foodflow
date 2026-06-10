@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -42,5 +43,31 @@ class MenuController extends Controller
         ]);
 
         return redirect()->route('dashboard.menu.index')->with('success', 'Categoría creada correctamente.');
+    }
+
+    public function storeProduct(Request $request): RedirectResponse
+    {
+        $organization = auth()->user()->currentOrganization;
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'category_id' => [
+                'required',
+                Rule::exists('categories', 'id')->where('organization_id', $organization->id),
+            ],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $organization->products()->create([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'price' => $validated['price'],
+            'category_id' => $validated['category_id'],
+            'is_active' => $validated['is_active'] ?? true,
+        ]);
+
+        return redirect()->route('dashboard.menu.index')->with('success', 'Producto creado correctamente.');
     }
 }
