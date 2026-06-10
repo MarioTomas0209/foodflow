@@ -65,6 +65,35 @@ export interface Cart {
     items: CartItem[];
 }
 
+export interface OrderItem {
+    id: string;
+    product_id: string | null;
+    product_variant_id: string | null;
+    product_name: string;
+    variant_name: string | null;
+    unit_price: string;
+    quantity: number;
+    subtotal: string;
+}
+
+export interface Order {
+    id: string;
+    customer_name: string;
+    customer_phone: string;
+    customer_notes: string | null;
+    type: 'pickup' | 'delivery';
+    delivery_address: string | null;
+    delivery_city: string | null;
+    latitude: string | null;
+    longitude: string | null;
+    status: string;
+    payment_method: 'cash' | 'transfer';
+    subtotal: string;
+    delivery_fee: string;
+    total: string;
+    items: OrderItem[];
+}
+
 export interface Auth {
     user: User;
 }

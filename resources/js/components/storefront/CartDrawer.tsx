@@ -22,6 +22,7 @@ interface CartDrawerProps {
     onIncrement: (productId: string, variantId: string | null) => void;
     onDecrement: (productId: string, variantId: string | null) => void;
     onRemove: (productId: string, variantId: string | null) => void;
+    onCheckout: () => void;
 }
 
 export function CartDrawer({
@@ -33,6 +34,7 @@ export function CartDrawer({
     onIncrement,
     onDecrement,
     onRemove,
+    onCheckout,
 }: CartDrawerProps) {
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -116,7 +118,13 @@ export function CartDrawer({
                         <span className="text-muted-foreground text-sm">Subtotal</span>
                         <span className="text-lg font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
                     </div>
-                    <Button type="button" size="lg" className="w-full rounded-xl" disabled={isEmpty}>
+                    <Button
+                        type="button"
+                        size="lg"
+                        className="w-full rounded-xl"
+                        disabled={isEmpty}
+                        onClick={onCheckout}
+                    >
                         Continuar con el pedido
                     </Button>
                 </SheetFooter>

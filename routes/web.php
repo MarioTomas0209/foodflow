@@ -3,9 +3,12 @@
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\MenuController;
 use App\Http\Controllers\Onboarding\OnboardingController;
+use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
+$slugPattern = '^[a-z0-9]+(?:-[a-z0-9]+)*$';
 
 Route::get('/', function () {
     return Inertia::render('welcome');
@@ -29,6 +32,10 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::put('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
 });
 
+Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');
+Route::get('/{slug}/checkout', [OrderController::class, 'checkout'])->name('storefront.checkout')->where('slug', $slugPattern);
+Route::post('/{slug}/orders', [OrderController::class, 'store'])->name('storefront.orders.store')->where('slug', $slugPattern);
+
 Route::get('/{slug}', [StorefrontController::class, 'show'])
     ->name('storefront.show')
-    ->where('slug', '^[a-z0-9]+(?:-[a-z0-9]+)*$');
+    ->where('slug', $slugPattern);

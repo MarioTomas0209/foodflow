@@ -22,6 +22,8 @@ class Order extends Model
         'type',
         'delivery_address',
         'delivery_city',
+        'latitude',
+        'longitude',
         'status',
         'payment_method',
         'subtotal',
@@ -38,6 +40,8 @@ class Order extends Model
             'subtotal' => 'decimal:2',
             'delivery_fee' => 'decimal:2',
             'total' => 'decimal:2',
+            'latitude' => 'decimal:7',
+            'longitude' => 'decimal:7',
         ];
     }
 

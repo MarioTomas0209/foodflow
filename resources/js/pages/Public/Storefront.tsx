@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
 
@@ -7,6 +7,8 @@ import { ProductCard } from '@/components/storefront/ProductCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/hooks/use-cart';
+import { saveCartForCheckout } from '@/lib/cart-storage';
+import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
 import { type Category, type PublicOrganization } from '@/types';
 
@@ -18,6 +20,17 @@ interface StorefrontProps {
 export default function Storefront({ organization, categories }: StorefrontProps) {
     const [cartOpen, setCartOpen] = useState(false);
     const cart = useCart(organization.id);
+    const namedRoute = useNamedRoute();
+
+    const handleCheckout = () => {
+        saveCartForCheckout({
+            organizationId: organization.id,
+            organizationSlug: organization.slug,
+            items: cart.items,
+        });
+        setCartOpen(false);
+        router.visit(namedRoute('storefront.checkout', organization.slug));
+    };
 
     return (
         <PublicLayout organization={organization}>
@@ -90,6 +103,7 @@ export default function Storefront({ organization, categories }: StorefrontProps
                 onIncrement={cart.incrementItem}
                 onDecrement={cart.decrementItem}
                 onRemove={cart.removeItem}
+                onCheckout={handleCheckout}
             />
         </PublicLayout>
     );
