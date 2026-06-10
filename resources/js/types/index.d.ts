@@ -49,6 +49,20 @@ export interface Category {
     products: Product[];
 }
 
+export interface CartItem {
+    productId: string;
+    productName: string;
+    variantId: string | null;
+    variantName: string | null;
+    price: number;
+    quantity: number;
+}
+
+export interface Cart {
+    organizationId: string;
+    items: CartItem[];
+}
+
 export interface Auth {
     user: User;
 }
