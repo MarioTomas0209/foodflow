@@ -8,6 +8,17 @@ export interface Organization {
     logo: string | null;
 }
 
+export interface PublicOrganization {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    phone: string | null;
+    logo: string | null;
+    address: string | null;
+    city: string | null;
+}
+
 export interface ProductVariant {
     id: string;
     name: string;

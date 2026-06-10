@@ -3,6 +3,7 @@
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\MenuController;
 use App\Http\Controllers\Onboarding\OnboardingController;
+use App\Http\Controllers\Public\StorefrontController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -27,3 +28,7 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::post('/menu/products', [MenuController::class, 'storeProduct'])->name('menu.products.store');
     Route::put('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
 });
+
+Route::get('/{slug}', [StorefrontController::class, 'show'])
+    ->name('storefront.show')
+    ->where('slug', '^[a-z0-9]+(?:-[a-z0-9]+)*$');
