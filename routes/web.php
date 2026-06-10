@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\MenuController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -19,5 +21,7 @@ Route::middleware(['auth'])->group(function () {
 
 // Dashboard del negocio - requiere auth Y organización activa
 Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard.')->group(function () {
-    Route::get('/', fn () => inertia('Dashboard/Index'))->name('index');
+    Route::get('/', [DashboardController::class, 'index'])->name('index');
+    Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
+    Route::post('/menu/categories', [MenuController::class, 'storeCategory'])->name('menu.categories.store');
 });
