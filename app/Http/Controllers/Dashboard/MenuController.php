@@ -41,6 +41,6 @@ class MenuController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        return redirect()->route('dashboard.menu.index');
+        return redirect()->route('dashboard.menu.index')->with('success', 'Categoría creada correctamente.');
     }
 }

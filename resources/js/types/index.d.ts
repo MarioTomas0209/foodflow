@@ -7,6 +7,26 @@ export interface Organization {
     logo: string | null;
 }
 
+export interface Product {
+    id: string;
+    name: string;
+    description: string | null;
+    price: string;
+    image: string | null;
+    is_active: boolean;
+    sort_order: number;
+    category_id: string | null;
+}
+
+export interface Category {
+    id: string;
+    name: string;
+    description: string | null;
+    is_active: boolean;
+    sort_order: number;
+    products: Product[];
+}
+
 export interface Auth {
     user: User;
 }
@@ -28,11 +48,20 @@ export interface NavItem {
     isActive?: boolean;
 }
 
+export interface FlashMessages {
+    success?: string;
+    error?: string;
+    info?: string;
+    warning?: string;
+    status?: string;
+}
+
 export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
     currentOrganization?: Organization;
+    flash?: FlashMessages;
     [key: string]: unknown;
 }
 

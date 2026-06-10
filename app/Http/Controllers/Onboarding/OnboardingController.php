@@ -49,7 +49,7 @@ class OnboardingController extends Controller
             $user->update(['current_organization_id' => $organization->id]);
         });
 
-        return redirect()->route('dashboard.index');
+        return redirect()->route('dashboard.index')->with('success', '¡Tu negocio fue creado exitosamente!');
     }
 
     private function generateSlug(string $value): string
