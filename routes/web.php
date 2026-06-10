@@ -25,4 +25,5 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
     Route::post('/menu/categories', [MenuController::class, 'storeCategory'])->name('menu.categories.store');
     Route::post('/menu/products', [MenuController::class, 'storeProduct'])->name('menu.products.store');
+    Route::put('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
 });

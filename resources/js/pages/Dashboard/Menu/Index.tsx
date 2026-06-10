@@ -2,9 +2,9 @@ import { Head } from '@inertiajs/react';
 
 import { CategoryCard } from '@/components/menu/category-card';
 import { CreateCategoryDialog } from '@/components/menu/create-category-dialog';
-import { CreateProductDialog } from '@/components/menu/create-product-dialog';
 import { MenuEmptyState } from '@/components/menu/menu-empty-state';
 import { MenuHeader } from '@/components/menu/menu-header';
+import { ProductFormDialog } from '@/components/menu/product-form-dialog';
 import { useCategoryForm } from '@/hooks/use-category-form';
 import { useProductForm } from '@/hooks/use-product-form';
 import DashboardLayout from '@/layouts/DashboardLayout';
@@ -32,7 +32,12 @@ export default function Index({ categories }: MenuPageProps) {
                 ) : (
                     <div className="flex flex-col gap-4">
                         {categories.map((category) => (
-                            <CategoryCard key={category.id} category={category} onAddProduct={productForm.openForCategory} />
+                            <CategoryCard
+                                key={category.id}
+                                category={category}
+                                onAddProduct={productForm.openForCategory}
+                                onEditProduct={productForm.openForEdit}
+                            />
                         ))}
                     </div>
                 )}
@@ -48,14 +53,20 @@ export default function Index({ categories }: MenuPageProps) {
                 onSubmit={categoryForm.submit}
             />
 
-            <CreateProductDialog
+            <ProductFormDialog
                 open={productForm.open}
+                mode={productForm.mode}
                 onOpenChange={productForm.setOpen}
                 categoryName={activeCategory?.name}
                 data={productForm.data}
                 setData={productForm.setData}
                 processing={productForm.processing}
                 errors={productForm.errors}
+                variantError={productForm.variantError}
+                onSetHasVariants={productForm.setHasVariants}
+                onAddVariant={productForm.addVariant}
+                onRemoveVariant={productForm.removeVariant}
+                onUpdateVariant={productForm.updateVariant}
                 onSubmit={productForm.submit}
                 onClose={productForm.close}
             />

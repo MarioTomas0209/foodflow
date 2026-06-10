@@ -8,15 +8,25 @@ export interface Organization {
     logo: string | null;
 }
 
+export interface ProductVariant {
+    id: string;
+    name: string;
+    price: string;
+    is_active: boolean;
+    sort_order: number;
+}
+
 export interface Product {
     id: string;
     name: string;
     description: string | null;
     price: string;
+    has_variants: boolean;
     image: string | null;
     is_active: boolean;
     sort_order: number;
     category_id: string | null;
+    variants: ProductVariant[];
 }
 
 export interface Category {
