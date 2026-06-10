@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ProductVariant extends Model
+class OrderItem extends Model
 {
     use HasUlids;
 
@@ -14,12 +14,14 @@ class ProductVariant extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'order_id',
         'product_id',
-        'name',
-        'price',
-        'stock',
-        'is_active',
-        'sort_order',
+        'product_variant_id',
+        'product_name',
+        'variant_name',
+        'unit_price',
+        'quantity',
+        'subtotal',
     ];
 
     /**
@@ -28,19 +30,13 @@ class ProductVariant extends Model
     protected function casts(): array
     {
         return [
-            'price' => 'decimal:2',
-            'is_active' => 'boolean',
-            'stock' => 'integer',
+            'unit_price' => 'decimal:2',
+            'subtotal' => 'decimal:2',
         ];
     }
 
-    public function isAvailable(): bool
+    public function order(): BelongsTo
     {
-        return $this->stock === null || $this->stock > 0;
-    }
-
-    public function product(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Order::class);
     }
 }

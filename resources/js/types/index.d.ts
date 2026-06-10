@@ -23,6 +23,7 @@ export interface ProductVariant {
     id: string;
     name: string;
     price: string;
+    stock: number | null;
     is_active: boolean;
     sort_order: number;
 }
@@ -33,6 +34,7 @@ export interface Product {
     description: string | null;
     price: string;
     has_variants: boolean;
+    stock: number | null;
     image: string | null;
     is_active: boolean;
     sort_order: number;

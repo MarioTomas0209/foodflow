@@ -19,10 +19,19 @@ class StorefrontController extends Controller
         $categories = $organization
             ->categories()
             ->where('is_active', true)
-            ->whereHas('products', fn ($query) => $query->where('is_active', true))
+            ->whereHas('products', fn ($query) => $query
+                ->where('is_active', true)
+                ->where(fn ($query) => $query
+                    ->where('has_variants', true)
+                    ->orWhere(fn ($query) => $query->whereNull('stock')->orWhere('stock', '>', 0))
+                ))
             ->with([
                 'products' => fn ($query) => $query
                     ->where('is_active', true)
+                    ->where(fn ($query) => $query
+                        ->where('has_variants', true)
+                        ->orWhere(fn ($query) => $query->whereNull('stock')->orWhere('stock', '>', 0))
+                    )
                     ->with([
                         'variants' => fn ($query) => $query
                             ->where('is_active', true)

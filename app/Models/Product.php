@@ -21,6 +21,7 @@ class Product extends Model
         'description',
         'price',
         'has_variants',
+        'stock',
         'image',
         'is_active',
         'sort_order',
@@ -35,7 +36,13 @@ class Product extends Model
             'price' => 'decimal:2',
             'has_variants' => 'boolean',
             'is_active' => 'boolean',
+            'stock' => 'integer',
         ];
+    }
+
+    public function isAvailable(): bool
+    {
+        return $this->stock === null || $this->stock > 0;
     }
 
     public function organization(): BelongsTo

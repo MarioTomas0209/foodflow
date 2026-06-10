@@ -19,12 +19,13 @@ interface ProductFormDialogProps {
         name: string;
         description: string;
         price: string;
+        stock: string;
         has_variants: boolean;
         variants: ProductVariantInput[];
     };
-    setData: (key: 'name' | 'description' | 'price', value: string) => void;
+    setData: (key: 'name' | 'description' | 'price' | 'stock', value: string) => void;
     processing: boolean;
-    errors: Partial<Record<'name' | 'description' | 'price' | 'category_id' | 'variants', string>>;
+    errors: Partial<Record<'name' | 'description' | 'price' | 'stock' | 'category_id' | 'variants', string>>;
     variantError: string | null;
     onSetHasVariants: (hasVariants: boolean) => void;
     onAddVariant: () => void;
@@ -124,33 +125,54 @@ export function ProductFormDialog({
                     </div>
 
                     {!data.has_variants ? (
-                        <div className="grid gap-2">
-                            <Label htmlFor="product-price">Precio</Label>
-                            <Input
-                                id="product-price"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={data.price}
-                                onChange={(e) => setData('price', e.target.value)}
-                                disabled={processing}
-                                placeholder="0.00"
-                                required
-                            />
-                            <InputError message={errors.price ?? hiddenServerError ?? undefined} />
-                        </div>
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="product-price">Precio</Label>
+                                <Input
+                                    id="product-price"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={data.price}
+                                    onChange={(e) => setData('price', e.target.value)}
+                                    disabled={processing}
+                                    placeholder="0.00"
+                                    required
+                                />
+                                <InputError message={errors.price ?? hiddenServerError ?? undefined} />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="product-stock">Stock</Label>
+                                <Input
+                                    id="product-stock"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={data.stock}
+                                    onChange={(e) => setData('stock', e.target.value)}
+                                    disabled={processing}
+                                    placeholder="Sin límite"
+                                />
+                                <p className="text-muted-foreground text-sm">
+                                    Deja vacío si el producto no tiene límite de cantidad.
+                                </p>
+                                <InputError message={errors.stock} />
+                            </div>
+                        </>
                     ) : (
                         <div className="grid gap-3">
                             <Label>Variantes</Label>
                             <div className="flex flex-col gap-2">
-                                <div className="text-muted-foreground hidden gap-2 px-0 text-xs font-medium sm:grid sm:grid-cols-[1fr_1fr_auto]">
+                                <div className="text-muted-foreground hidden gap-2 px-0 text-xs font-medium sm:grid sm:grid-cols-[1fr_1fr_1fr_auto]">
                                     <span>Nombre</span>
                                     <span>Precio</span>
+                                    <span>Stock</span>
                                     <span className="sr-only">Acciones</span>
                                 </div>
                                 {data.variants.map((variant, index) => (
                                     <div key={index} className="flex items-start gap-2">
-                                        <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                                        <div className="grid flex-1 gap-2 sm:grid-cols-3">
                                             <div className="grid gap-1.5">
                                                 <Label htmlFor={`variant-name-${index}`} className="sm:sr-only">
                                                     Nombre de la variante
@@ -180,6 +202,21 @@ export function ProductFormDialog({
                                                     required
                                                 />
                                             </div>
+                                            <div className="grid gap-1.5">
+                                                <Label htmlFor={`variant-stock-${index}`} className="sm:sr-only">
+                                                    Stock de la variante
+                                                </Label>
+                                                <Input
+                                                    id={`variant-stock-${index}`}
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
+                                                    value={variant.stock}
+                                                    onChange={(e) => onUpdateVariant(index, 'stock', e.target.value)}
+                                                    disabled={processing}
+                                                    placeholder="Sin límite"
+                                                />
+                                            </div>
                                         </div>
                                         <Button
                                             type="button"
@@ -199,6 +236,9 @@ export function ProductFormDialog({
                                 <Plus className="size-4" />
                                 Agregar variante
                             </Button>
+                            <p className="text-muted-foreground text-sm">
+                                Deja el stock vacío en cada variante si no tiene límite de cantidad.
+                            </p>
                             <InputError message={variantError ?? errors.variants} />
                         </div>
                     )}

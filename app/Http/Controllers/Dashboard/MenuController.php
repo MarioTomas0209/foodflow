@@ -56,6 +56,7 @@ class MenuController extends Controller
             'description' => $validated['description'] ?? null,
             'price' => $validated['has_variants'] ? 0 : $validated['price'],
             'has_variants' => $validated['has_variants'],
+            'stock' => $validated['has_variants'] ? null : ($validated['stock'] ?? null),
             'category_id' => $validated['category_id'],
             'is_active' => $validated['is_active'] ?? true,
         ]);
@@ -78,6 +79,7 @@ class MenuController extends Controller
             'description' => $validated['description'] ?? null,
             'price' => $validated['has_variants'] ? 0 : $validated['price'],
             'has_variants' => $validated['has_variants'],
+            'stock' => $validated['has_variants'] ? null : ($validated['stock'] ?? null),
             'category_id' => $validated['category_id'],
             'is_active' => $validated['is_active'] ?? true,
         ]);
@@ -117,6 +119,18 @@ class MenuController extends Controller
                 'numeric',
                 'min:0',
             ],
+            'stock' => [
+                Rule::excludeIf($hasVariants),
+                'nullable',
+                'integer',
+                'min:0',
+            ],
+            'variants.*.stock' => [
+                Rule::excludeIf(! $hasVariants),
+                'nullable',
+                'integer',
+                'min:0',
+            ],
             'category_id' => [
                 'required',
                 Rule::exists('categories', 'id')->where('organization_id', $organization->id),
@@ -137,6 +151,7 @@ class MenuController extends Controller
                 collect($validated['variants'])->map(fn (array $variant, int $index) => [
                     'name' => $variant['name'],
                     'price' => $variant['price'],
+                    'stock' => $variant['stock'] ?? null,
                     'sort_order' => $index,
                 ])->all()
             );

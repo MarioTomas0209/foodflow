@@ -10,7 +10,11 @@ export function useCart(organizationId: string) {
     const [items, setItems] = useState<CartItem[]>([]);
 
     const addItem = useCallback((product: Product, variant?: ProductVariant) => {
-        if (product.has_variants && !variant) {
+        if (product.has_variants) {
+            if (!variant || variant.stock === 0) {
+                return;
+            }
+        } else if (product.stock === 0) {
             return;
         }
 

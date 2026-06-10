@@ -14,6 +14,7 @@ interface ProductModalState {
 export interface ProductVariantInput {
     name: string;
     price: string;
+    stock: string;
     [key: string]: string;
 }
 
@@ -21,6 +22,7 @@ export interface ProductFormData {
     name: string;
     description: string;
     price: string;
+    stock: string;
     category_id: string;
     is_active: boolean;
     has_variants: boolean;
@@ -32,6 +34,7 @@ const initialFormData: ProductFormData = {
     name: '',
     description: '',
     price: '',
+    stock: '',
     category_id: '',
     is_active: true,
     has_variants: false,
@@ -82,7 +85,14 @@ export function useProductForm() {
     transform((formData) => ({
         ...formData,
         price: formData.has_variants ? '0' : formData.price,
-        variants: formData.has_variants ? formData.variants : [],
+        stock: formData.has_variants || formData.stock === '' ? null : Number(formData.stock),
+        variants: formData.has_variants
+            ? formData.variants.map((variant) => ({
+                  name: variant.name,
+                  price: variant.price,
+                  stock: variant.stock === '' ? null : Number(variant.stock),
+              }))
+            : [],
     }));
 
     const openForCategory = (categoryId: string) => {
@@ -105,6 +115,7 @@ export function useProductForm() {
             name: product.name,
             description: product.description ?? '',
             price: product.has_variants ? '0' : String(product.price),
+            stock: product.has_variants ? '' : product.stock !== null ? String(product.stock) : '',
             category_id: product.category_id ?? '',
             is_active: product.is_active,
             has_variants: product.has_variants,
@@ -112,6 +123,7 @@ export function useProductForm() {
                 ? product.variants.map((variant) => ({
                       name: variant.name,
                       price: String(variant.price),
+                      stock: variant.stock !== null ? String(variant.stock) : '',
                   }))
                 : [],
         });
@@ -135,7 +147,7 @@ export function useProductForm() {
             variants: hasVariants
                 ? current.variants.length > 0
                     ? current.variants
-                    : [{ name: '', price: '' }]
+                    : [{ name: '', price: '', stock: '' }]
                 : [],
         }));
     };
@@ -144,7 +156,7 @@ export function useProductForm() {
         setVariantError(null);
         setData((current) => ({
             ...current,
-            variants: [...current.variants, { name: '', price: '' }],
+            variants: [...current.variants, { name: '', price: '', stock: '' }],
         }));
     };
 

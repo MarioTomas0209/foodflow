@@ -142,3 +142,107 @@ test('storefront only includes active categories products and variants', functio
             ->where('categories.0.products.0.variants.0.id', $activeVariant->id)
         );
 });
+
+test('storefront hides fixed price products with zero stock', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Stock agotado',
+        'slug' => 'stock-agotado',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Agotado',
+        'price' => 50,
+        'stock' => 0,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Disponible',
+        'price' => 50,
+        'stock' => 5,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $this->get(route('storefront.show', $organization->slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('categories', 1)
+            ->has('categories.0.products', 1)
+            ->where('categories.0.products.0.name', 'Disponible')
+        );
+});
+
+test('storefront still shows variant products when some variants are out of stock', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Variantes mixtas',
+        'slug' => 'variantes-mixtas',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Milanesas',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Milanesa',
+        'price' => 0,
+        'has_variants' => true,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    ProductVariant::create([
+        'product_id' => $product->id,
+        'name' => 'Orden',
+        'price' => 90,
+        'stock' => 0,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    ProductVariant::create([
+        'product_id' => $product->id,
+        'name' => 'Media',
+        'price' => 55,
+        'stock' => 3,
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $this->get(route('storefront.show', $organization->slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('categories', 1)
+            ->has('categories.0.products', 1)
+            ->has('categories.0.products.0.variants', 2)
+            ->where('categories.0.products.0.variants.0.stock', 0)
+            ->where('categories.0.products.0.variants.1.stock', 3)
+        );
+});
