@@ -7,6 +7,8 @@ use App\Http\Controllers\Dashboard\OrganizationController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
+use App\Events\NewOrderReceived;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -18,6 +20,8 @@ Route::get('/', function () {
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+
+Broadcast::routes(['middleware' => ['web', 'auth']]);
 
 // Onboarding - requiere auth pero NO requiere organización
 Route::middleware(['auth'])->group(function () {

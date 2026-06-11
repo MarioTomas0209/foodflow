@@ -2,9 +2,11 @@ import { Link, usePage } from '@inertiajs/react';
 import { LayoutDashboard, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
+import { OrderNotificationsBell } from '@/components/dashboard/order-notifications-bell';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useOrderNotifications } from '@/hooks/use-order-notifications';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
 
@@ -94,7 +96,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const { url } = usePage();
     const [mobileOpen, setMobileOpen] = useState(false);
 
+    const { notifications, unreadCount, markAllAsRead, dismiss } = useOrderNotifications(currentOrganization?.id);
+
     const organizationName = currentOrganization?.name ?? 'Mi negocio';
+
+    const notificationsBell = (
+        <OrderNotificationsBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onMarkAllAsRead={markAllAsRead}
+            onDismiss={dismiss}
+        />
+    );
 
     return (
         <div className="bg-background flex min-h-screen">
@@ -105,25 +118,29 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </aside>
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <header className="border-border flex items-center justify-between border-b p-4 md:hidden">
-                    <span className="truncate font-semibold">{organizationName}</span>
-                    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-                        <SheetTrigger asChild>
-                            <Button variant="outline" size="icon" aria-label="Abrir menú">
-                                <Menu className="size-5" />
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-72">
-                            <SheetHeader className="text-left">
-                                <SheetTitle className="sr-only">Navegación</SheetTitle>
-                            </SheetHeader>
-                            <div className="mt-2 flex flex-col gap-6">
-                                <OrganizationBrand name={organizationName} logo={currentOrganization?.logo} />
-                                <Separator />
-                                <NavLinks url={url} onNavigate={() => setMobileOpen(false)} />
-                            </div>
-                        </SheetContent>
-                    </Sheet>
+                <header className="border-border flex items-center justify-between gap-3 border-b p-4">
+                    <span className="truncate font-semibold md:hidden">{organizationName}</span>
+                    <div className="hidden md:block" />
+                    <div className="ml-auto flex items-center gap-2">
+                        {notificationsBell}
+                        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                            <SheetTrigger asChild>
+                                <Button variant="outline" size="icon" className="md:hidden" aria-label="Abrir menú">
+                                    <Menu className="size-5" />
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="w-72">
+                                <SheetHeader className="text-left">
+                                    <SheetTitle className="sr-only">Navegación</SheetTitle>
+                                </SheetHeader>
+                                <div className="mt-2 flex flex-col gap-6">
+                                    <OrganizationBrand name={organizationName} logo={currentOrganization?.logo} />
+                                    <Separator />
+                                    <NavLinks url={url} onNavigate={() => setMobileOpen(false)} />
+                                </div>
+                            </SheetContent>
+                        </Sheet>
+                    </div>
                 </header>
                 <main className="flex-1 p-6">{children}</main>
             </div>

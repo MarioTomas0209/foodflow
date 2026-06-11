@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
+use App\Events\NewOrderReceived;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
@@ -210,6 +211,9 @@ class OrderController extends Controller
 
             return $order;
         });
+
+        $order->load('items');
+        broadcast(new NewOrderReceived($order))->toOthers();
 
         return redirect()->route('storefront.order.confirmation', $order);
     }

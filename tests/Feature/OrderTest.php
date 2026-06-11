@@ -1,10 +1,12 @@
 <?php
 
+use App\Events\NewOrderReceived;
 use App\Models\Category;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('guests can view checkout page for active organization', function () {
@@ -253,4 +255,55 @@ test('delivery orders require coordinates', function () {
             ],
         ],
     ])->assertSessionHasErrors(['latitude', 'longitude']);
+});
+
+test('placing an order broadcasts NewOrderReceived on the organization channel', function () {
+    Event::fake([NewOrderReceived::class]);
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Broadcast Org',
+        'slug' => 'broadcast-org',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Burrito',
+        'price' => 45,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Cliente Broadcast',
+        'customer_phone' => '5512345678',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    Event::assertDispatched(NewOrderReceived::class, function (NewOrderReceived $event) use ($organization) {
+        return $event->order->organization_id === $organization->id
+            && $event->order->relationLoaded('items')
+            && $event->order->items->count() === 1;
+    });
 });
