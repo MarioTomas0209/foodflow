@@ -1,0 +1,106 @@
+import { Head, useForm } from '@inertiajs/react';
+import { LoaderCircle } from 'lucide-react';
+import { FormEventHandler } from 'react';
+
+import InputError from '@/components/input-error';
+import TextLink from '@/components/text-link';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import PublicLayout from '@/layouts/PublicLayout';
+import { useNamedRoute } from '@/lib/ziggy';
+import { type PublicOrganization } from '@/types';
+
+interface LoginForm {
+    phone: string;
+    password: string;
+    remember: boolean;
+}
+
+interface LoginProps {
+    organization: PublicOrganization;
+}
+
+export default function Login({ organization }: LoginProps) {
+    const namedRoute = useNamedRoute();
+    const { data, setData, post, processing, errors, reset } = useForm<LoginForm>({
+        phone: '',
+        password: '',
+        remember: false,
+    });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(namedRoute('storefront.login.store', organization.slug), {
+            onFinish: () => reset('password'),
+        });
+    };
+
+    return (
+        <PublicLayout organization={organization}>
+            <Head title="Iniciar sesión" />
+
+            <div className="mx-auto w-full max-w-sm">
+                <div className="mb-6 space-y-1 text-center">
+                    <h2 className="text-xl font-semibold">Iniciar sesión</h2>
+                    <p className="text-muted-foreground text-sm">
+                        Usa tu teléfono para ver tus pedidos y direcciones guardadas.
+                    </p>
+                </div>
+
+                <form className="flex flex-col gap-6" onSubmit={submit}>
+                    <div className="grid gap-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="phone">Teléfono</Label>
+                            <Input
+                                id="phone"
+                                type="tel"
+                                required
+                                autoFocus
+                                autoComplete="tel"
+                                inputMode="tel"
+                                placeholder="9631234567"
+                                value={data.phone}
+                                onChange={(e) => setData('phone', e.target.value)}
+                            />
+                            <InputError message={errors.phone} />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="password">Contraseña</Label>
+                            <Input
+                                id="password"
+                                type="password"
+                                required
+                                autoComplete="current-password"
+                                value={data.password}
+                                onChange={(e) => setData('password', e.target.value)}
+                            />
+                            <InputError message={errors.password} />
+                        </div>
+
+                        <div className="flex items-center space-x-3">
+                            <Checkbox
+                                id="remember"
+                                checked={data.remember}
+                                onCheckedChange={(checked) => setData('remember', checked === true)}
+                            />
+                            <Label htmlFor="remember">Recordarme</Label>
+                        </div>
+
+                        <Button type="submit" className="w-full" disabled={processing}>
+                            {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                            Entrar
+                        </Button>
+                    </div>
+
+                    <p className="text-muted-foreground text-center text-sm">
+                        ¿No tienes cuenta?{' '}
+                        <TextLink href={namedRoute('storefront.register', organization.slug)}>Regístrate</TextLink>
+                    </p>
+                </form>
+            </div>
+        </PublicLayout>
+    );
+}

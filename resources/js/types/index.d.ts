@@ -142,6 +142,12 @@ export interface Auth {
     user: User;
 }
 
+export interface Customer {
+    id: string;
+    name: string;
+    phone: string;
+}
+
 export interface BreadcrumbItem {
     title: string;
     href: string;
@@ -171,6 +177,7 @@ export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
+    customer: Customer | null;
     currentOrganization?: Organization;
     flash?: FlashMessages;
     today: string;
