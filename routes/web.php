@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\MenuController;
+use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
@@ -30,6 +31,9 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::post('/menu/categories', [MenuController::class, 'storeCategory'])->name('menu.categories.store');
     Route::post('/menu/products', [MenuController::class, 'storeProduct'])->name('menu.products.store');
     Route::put('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
+    Route::get('/orders', [DashboardOrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [DashboardOrderController::class, 'show'])->name('orders.show');
+    Route::patch('/orders/{order}/status', [DashboardOrderController::class, 'updateStatus'])->name('orders.update-status');
 });
 
 Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');

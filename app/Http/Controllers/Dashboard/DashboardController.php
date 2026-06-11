@@ -10,7 +10,9 @@ class DashboardController extends Controller
 {
     public function index(): Response
     {
+        $today = today();
         $organization = auth()->user()->currentOrganization;
+        $ordersToday = $organization->orders()->whereDate('created_at', $today);
 
         return Inertia::render('Dashboard/Index', [
             'organization' => [
@@ -20,9 +22,11 @@ class DashboardController extends Controller
                 'logo' => $organization->logo,
             ],
             'stats' => [
-                'orders_today' => 0,
-                'orders_pending' => 0,
-                'revenue_today' => 0,
+                'orders_today' => (clone $ordersToday)->count(),
+                'orders_pending' => (clone $ordersToday)->where('status', 'pending')->count(),
+                'revenue_today' => (clone $ordersToday)
+                    ->whereIn('status', ['confirmed', 'preparing', 'ready', 'delivered'])
+                    ->sum('total'),
             ],
             'isFirstDay' => $organization->created_at->isToday(),
         ]);

@@ -1,6 +1,7 @@
-import { Head } from '@inertiajs/react';
-import { Clock, DollarSign, ShoppingBag } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
+import { ArrowRight, Clock, DollarSign, ShoppingBag } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { type Organization } from '@/types';
@@ -71,6 +72,13 @@ export default function Index({ organization, stats, isFirstDay }: DashboardPage
                         </CardContent>
                     </Card>
                 </div>
+
+                <Button asChild variant="outline" className="w-fit">
+                    <Link href={route('dashboard.orders.index')}>
+                        Ver pedidos de hoy
+                        <ArrowRight className="size-4" />
+                    </Link>
+                </Button>
             </div>
         </DashboardLayout>
     );

@@ -67,8 +67,6 @@ export interface Cart {
 
 export interface OrderItem {
     id: string;
-    product_id: string | null;
-    product_variant_id: string | null;
     product_name: string;
     variant_name: string | null;
     unit_price: string;
@@ -84,14 +82,33 @@ export interface Order {
     type: 'pickup' | 'delivery';
     delivery_address: string | null;
     delivery_city: string | null;
-    latitude: string | null;
-    longitude: string | null;
-    status: string;
+    latitude: number | null;
+    longitude: number | null;
+    status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
     payment_method: 'cash' | 'transfer';
     subtotal: string;
     delivery_fee: string;
     total: string;
     items: OrderItem[];
+    created_at: string;
+}
+
+export interface OrderFilters {
+    status: 'all' | Order['status'];
+    type: 'all' | Order['type'];
+}
+
+export interface PaginatedOrders {
+    data: Order[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    links: Array<{
+        url: string | null;
+        label: string;
+        active: boolean;
+    }>;
 }
 
 export interface Auth {
