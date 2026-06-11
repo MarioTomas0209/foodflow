@@ -38,6 +38,9 @@ class OrderController extends Controller
             ]), [
                 'logo' => $organization->logoPublicUrl(),
             ]),
+            'zones' => $organization->deliveryZones()
+                ->where('is_active', true)
+                ->get(['id', 'name', 'fee', 'center_lat', 'center_lng', 'radius_km']),
         ]);
     }
 
@@ -171,9 +174,27 @@ class OrderController extends Controller
         }
 
         $deliveryFee = 0;
+        $deliveryZoneId = null;
+
+        if ($validated['type'] === 'delivery') {
+            $zone = $organization->findDeliveryZoneFor(
+                $validated['latitude'],
+                $validated['longitude'],
+            );
+
+            if ($zone === null) {
+                throw ValidationException::withMessages([
+                    'delivery_address' => 'Lo sentimos, tu dirección está fuera de nuestra zona de cobertura.',
+                ]);
+            }
+
+            $deliveryFee = (float) $zone->fee;
+            $deliveryZoneId = $zone->id;
+        }
+
         $total = round($subtotal + $deliveryFee, 2);
 
-        $order = DB::transaction(function () use ($organization, $validated, $resolvedItems, $subtotal, $deliveryFee, $total) {
+        $order = DB::transaction(function () use ($organization, $validated, $resolvedItems, $subtotal, $deliveryFee, $deliveryZoneId, $total) {
             $order = Order::create([
                 'organization_id' => $organization->id,
                 'customer_name' => $validated['customer_name'],
@@ -184,6 +205,7 @@ class OrderController extends Controller
                 'delivery_city' => $validated['type'] === 'delivery' ? $validated['delivery_city'] : null,
                 'latitude' => $validated['type'] === 'delivery' ? $validated['latitude'] : null,
                 'longitude' => $validated['type'] === 'delivery' ? $validated['longitude'] : null,
+                'delivery_zone_id' => $deliveryZoneId,
                 'status' => 'pending',
                 'payment_method' => $validated['payment_method'],
                 'subtotal' => $subtotal,

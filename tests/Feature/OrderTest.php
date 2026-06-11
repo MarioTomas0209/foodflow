@@ -2,6 +2,7 @@
 
 use App\Events\NewOrderReceived;
 use App\Models\Category;
+use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
@@ -24,6 +25,7 @@ test('guests can view checkout page for active organization', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('Public/Checkout')
             ->where('organization.slug', 'taqueria-checkout')
+            ->has('zones', 0)
         );
 });
 
@@ -130,6 +132,17 @@ test('guests see order confirmation page after placing order', function () {
         'sort_order' => 0,
     ]);
 
+    $zone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 35,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
     $this->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Ana',
@@ -155,6 +168,9 @@ test('guests see order confirmation page after placing order', function () {
         'id' => $order->id,
         'latitude' => '16.2520000',
         'longitude' => '-92.1350000',
+        'delivery_zone_id' => $zone->id,
+        'delivery_fee' => '35.00',
+        'total' => '50.00',
     ]);
 
     $this->get(route('storefront.order.confirmation', $order))
@@ -162,7 +178,8 @@ test('guests see order confirmation page after placing order', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('Public/OrderConfirmation')
             ->where('order.customer_name', 'Ana')
-            ->where('order.total', '15.00')
+            ->where('order.total', '50.00')
+            ->where('order.delivery_fee', '35.00')
             ->has('order.items', 1)
             ->where('organization.phone', '+52 55 9999 8888')
         );
@@ -255,6 +272,66 @@ test('delivery orders require coordinates', function () {
             ],
         ],
     ])->assertSessionHasErrors(['latitude', 'longitude']);
+});
+
+test('delivery orders reject addresses outside coverage zones', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Fuera de zona',
+        'slug' => 'fuera-de-zona',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Torta',
+        'price' => 50,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 30,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 1,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'María',
+        'customer_phone' => '5511334455',
+        'type' => 'delivery',
+        'delivery_address' => 'Lejos del centro',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+        'latitude' => 19.4326,
+        'longitude' => -99.1332,
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertSessionHasErrors('delivery_address');
+
+    expect(Order::query()->count())->toBe(0);
 });
 
 test('placing an order broadcasts NewOrderReceived on the organization channel', function () {

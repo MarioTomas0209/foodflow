@@ -91,8 +91,18 @@ export default function OrderConfirmation({ order, organization }: OrderConfirma
 
                     <Separator />
 
+                    <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-medium tabular-nums">{formatCurrency(order.subtotal)}</span>
+                    </div>
+                    {order.type === 'delivery' && (
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Costo de envío</span>
+                            <span className="font-medium tabular-nums">{formatCurrency(order.delivery_fee)}</span>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Total</span>
+                        <span className="font-semibold">Total</span>
                         <span className="text-lg font-semibold tabular-nums">{formatCurrency(order.total)}</span>
                     </div>
                 </section>

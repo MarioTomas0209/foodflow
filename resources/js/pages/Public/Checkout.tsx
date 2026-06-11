@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { clearCartStorage, loadCartFromStorage } from '@/lib/cart-storage';
+import { findZoneForCoords, type Zone } from '@/lib/delivery-zones';
 import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
 import PublicLayout from '@/layouts/PublicLayout';
@@ -18,9 +19,10 @@ const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
 
 interface CheckoutProps {
     organization: PublicOrganization;
+    zones: Zone[];
 }
 
-export default function Checkout({ organization }: CheckoutProps) {
+export default function Checkout({ organization, zones }: CheckoutProps) {
     const didInit = useRef(false);
     const [cartItems, setCartItems] = useState<CartItem[] | null>(null);
     const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -105,6 +107,28 @@ export default function Checkout({ organization }: CheckoutProps) {
         [cartItems],
     );
 
+    const matchedZone = useMemo(() => {
+        if (
+            data.type !== 'delivery' ||
+            locationStatus !== 'success' ||
+            data.latitude === null ||
+            data.longitude === null
+        ) {
+            return null;
+        }
+
+        return findZoneForCoords(zones, data.latitude, data.longitude);
+    }, [data.type, data.latitude, data.longitude, locationStatus, zones]);
+
+    const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
+    const orderTotal = subtotal + deliveryFee;
+    const isOutOfCoverage =
+        data.type === 'delivery' &&
+        locationStatus === 'success' &&
+        data.latitude !== null &&
+        data.longitude !== null &&
+        matchedZone === null;
+
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
 
@@ -121,6 +145,7 @@ export default function Checkout({ organization }: CheckoutProps) {
 
     const canSubmit =
         !processing &&
+        !isOutOfCoverage &&
         (data.type !== 'delivery' || (data.latitude !== null && data.longitude !== null && locationStatus === 'success'));
 
     if (!cartItems) {
@@ -266,9 +291,17 @@ export default function Checkout({ organization }: CheckoutProps) {
                                 )}
 
                                 {locationStatus === 'success' && data.latitude !== null && data.longitude !== null && (
-                                    <p className="text-sm text-green-700 dark:text-green-400">
-                                        Ubicación capturada correctamente.
-                                    </p>
+                                    <>
+                                        {matchedZone ? (
+                                            <p className="text-sm text-green-700 dark:text-green-400">
+                                                Ubicación capturada. Zona: {matchedZone.name}
+                                            </p>
+                                        ) : (
+                                            <p className="text-destructive text-sm">
+                                                Tu dirección está fuera de nuestra zona de cobertura.
+                                            </p>
+                                        )}
+                                    </>
                                 )}
 
                                 {(locationStatus === 'error' || locationError) && (
@@ -359,9 +392,19 @@ export default function Checkout({ organization }: CheckoutProps) {
                             ))}
                         </ul>
                         <Separator />
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">Subtotal</span>
-                            <span className="text-lg font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
+                            <span className="font-medium tabular-nums">{formatCurrency(subtotal)}</span>
+                        </div>
+                        {data.type === 'delivery' && matchedZone && (
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Costo de envío</span>
+                                <span className="font-medium tabular-nums">{formatCurrency(deliveryFee)}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                            <span className="font-semibold">Total</span>
+                            <span className="text-lg font-semibold tabular-nums">{formatCurrency(orderTotal)}</span>
                         </div>
                     </section>
 
