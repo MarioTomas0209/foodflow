@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutDashboard, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, MapPin, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { OrderNotificationsBell } from '@/components/dashboard/order-notifications-bell';
@@ -39,6 +39,12 @@ const navItems: NavItem[] = [
         href: route('dashboard.menu.index'),
         icon: UtensilsCrossed,
         isActive: (url) => url.startsWith('/dashboard/menu'),
+    },
+    {
+        title: 'Zonas de entrega',
+        href: route('dashboard.delivery-zones.index'),
+        icon: MapPin,
+        isActive: (url) => url.startsWith('/dashboard/delivery-zones'),
     },
     {
         title: 'Configuración',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\DeliveryZoneController;
 use App\Http\Controllers\Dashboard\MenuController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\OrganizationController;
@@ -41,6 +42,10 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::patch('/orders/{order}/status', [DashboardOrderController::class, 'updateStatus'])->name('orders.update-status');
     Route::get('/settings', [OrganizationController::class, 'edit'])->name('settings');
     Route::post('/settings', [OrganizationController::class, 'update'])->name('settings.update');
+    Route::get('/delivery-zones', [DeliveryZoneController::class, 'index'])->name('delivery-zones.index');
+    Route::post('/delivery-zones', [DeliveryZoneController::class, 'store'])->name('delivery-zones.store');
+    Route::put('/delivery-zones/{zone}', [DeliveryZoneController::class, 'update'])->name('delivery-zones.update');
+    Route::delete('/delivery-zones/{zone}', [DeliveryZoneController::class, 'destroy'])->name('delivery-zones.destroy');
 });
 
 Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');

@@ -21,6 +21,17 @@ export interface DashboardOrganization {
     logo: string | null;
 }
 
+export interface DeliveryZone {
+    id: string;
+    name: string;
+    fee: string;
+    center_lat: string;
+    center_lng: string;
+    radius_km: string;
+    is_active: boolean;
+    sort_order: number;
+}
+
 export interface PublicOrganization {
     id: string;
     name: string;
