@@ -28,6 +28,11 @@ class OrderController extends Controller
 
         $status = $request->query('status', 'all');
         $type = $request->query('type', 'all');
+        $date = $request->query('date', today()->toDateString());
+
+        $request->validate([
+            'date' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
 
         if ($status !== 'all') {
             $request->validate([
@@ -43,7 +48,7 @@ class OrderController extends Controller
 
         $query = $organization->orders()
             ->with('items')
-            ->whereDate('created_at', today())
+            ->whereDate('created_at', $date)
             ->latest();
 
         if ($status !== 'all' && $status !== null && $status !== '') {
@@ -59,6 +64,7 @@ class OrderController extends Controller
             'filters' => [
                 'status' => $status,
                 'type' => $type,
+                'date' => $date,
             ],
         ]);
     }

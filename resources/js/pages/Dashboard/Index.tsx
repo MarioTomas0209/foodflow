@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowRight, Clock, DollarSign, ShoppingBag } from 'lucide-react';
 
+import { ShareMenuActions } from '@/components/dashboard/share-menu-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import DashboardLayout from '@/layouts/DashboardLayout';
@@ -73,12 +74,15 @@ export default function Index({ organization, stats, isFirstDay }: DashboardPage
                     </Card>
                 </div>
 
-                <Button asChild variant="outline" className="w-fit">
-                    <Link href={route('dashboard.orders.index')}>
-                        Ver pedidos de hoy
-                        <ArrowRight className="size-4" />
-                    </Link>
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline">
+                        <Link href={route('dashboard.orders.index')}>
+                            Ver pedidos de hoy
+                            <ArrowRight className="size-4" />
+                        </Link>
+                    </Button>
+                    <ShareMenuActions slug={organization.slug} />
+                </div>
             </div>
         </DashboardLayout>
     );

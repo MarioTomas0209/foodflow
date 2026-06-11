@@ -1,7 +1,8 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Package } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/format-currency';
 import {
@@ -12,7 +13,7 @@ import {
     orderStatusBadgeClass,
 } from '@/lib/order-status';
 import DashboardLayout from '@/layouts/DashboardLayout';
-import { type OrderFilters, type PaginatedOrders } from '@/types';
+import { type OrderFilters, type PaginatedOrders, type SharedData } from '@/types';
 
 interface OrdersIndexProps {
     orders: PaginatedOrders;
@@ -20,6 +21,12 @@ interface OrdersIndexProps {
 }
 
 export default function Index({ orders, filters }: OrdersIndexProps) {
+    const { today } = usePage<SharedData>().props;
+    const isToday = filters.date === today;
+    const title = isToday
+        ? 'Pedidos de hoy'
+        : `Pedidos del ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'long' }).format(new Date(`${filters.date}T12:00:00`))}`;
+
     const applyFilters = (next: Partial<OrderFilters>) => {
         router.get(
             route('dashboard.orders.index'),
@@ -34,13 +41,15 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
 
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Pedidos de hoy</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
                     <p className="text-muted-foreground mt-1 text-sm">
-                        Gestiona los pedidos recibidos hoy en tu negocio.
+                        {isToday
+                            ? 'Gestiona los pedidos recibidos hoy en tu negocio.'
+                            : 'Consulta los pedidos recibidos en la fecha seleccionada.'}
                     </p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                     <div className="grid gap-2">
                         <label htmlFor="status-filter" className="text-sm font-medium">
                             Estado
@@ -75,6 +84,19 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                             </SelectContent>
                         </Select>
                     </div>
+
+                    <div className="grid gap-2">
+                        <label htmlFor="date-filter" className="text-sm font-medium">
+                            Fecha
+                        </label>
+                        <Input
+                            id="date-filter"
+                            type="date"
+                            value={filters.date}
+                            max={today}
+                            onChange={(e) => applyFilters({ date: e.target.value })}
+                        />
+                    </div>
                 </div>
 
                 {orders.data.length === 0 ? (
@@ -83,7 +105,7 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                         <div>
                             <p className="font-medium">No hay pedidos</p>
                             <p className="text-muted-foreground mt-1 text-sm">
-                                Cuando recibas pedidos hoy, aparecerán aquí.
+                                No hay pedidos registrados para esta fecha.
                             </p>
                         </div>
                     </div>

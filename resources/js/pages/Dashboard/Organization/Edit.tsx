@@ -2,6 +2,7 @@ import { Head, useForm } from '@inertiajs/react';
 import { ImagePlus, LoaderCircle } from 'lucide-react';
 import { FormEventHandler, useMemo, useRef } from 'react';
 
+import { ShareMenuActions } from '@/components/dashboard/share-menu-actions';
 import InputError from '@/components/input-error';
 import { FormTextarea } from '@/components/menu/form-textarea';
 import { Button } from '@/components/ui/button';
@@ -118,6 +119,7 @@ export default function Edit({ organization }: EditProps) {
                             <p className="text-muted-foreground text-xs">
                                 {window.location.host}/{organization.slug}
                             </p>
+                            <ShareMenuActions slug={organization.slug} />
                         </div>
 
                         <div className="grid gap-2">

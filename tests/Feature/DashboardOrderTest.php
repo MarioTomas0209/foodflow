@@ -86,6 +86,7 @@ test('authenticated users can view todays orders index', function () {
             ->has('orders.data.0.items', 1)
             ->where('filters.status', 'all')
             ->where('filters.type', 'all')
+            ->where('filters.date', today()->toDateString())
         );
 });
 
@@ -103,6 +104,31 @@ test('orders index only shows todays orders', function () {
             ->has('orders.data', 1)
             ->where('orders.data.0.customer_name', 'Hoy')
         );
+});
+
+test('orders index can filter by date', function () {
+    [$user, $organization] = createDashboardUser();
+
+    $todayOrder = createOrderForOrganization($organization, ['customer_name' => 'Hoy']);
+    $yesterdayOrder = createOrderForOrganization($organization, ['customer_name' => 'Ayer']);
+    $yesterdayOrder->forceFill(['created_at' => now()->subDay()])->save();
+
+    $this->actingAs($user)
+        ->get(route('dashboard.orders.index', ['date' => now()->subDay()->toDateString()]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 1)
+            ->where('orders.data.0.customer_name', 'Ayer')
+            ->where('filters.date', now()->subDay()->toDateString())
+        );
+});
+
+test('orders index rejects future dates', function () {
+    [$user] = createDashboardUser();
+
+    $this->actingAs($user)
+        ->get(route('dashboard.orders.index', ['date' => now()->addDay()->toDateString()]))
+        ->assertSessionHasErrors('date');
 });
 
 test('orders index can filter by status and type', function () {

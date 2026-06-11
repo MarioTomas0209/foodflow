@@ -109,6 +109,7 @@ export interface Order {
 export interface OrderFilters {
     status: 'all' | Order['status'];
     type: 'all' | Order['type'];
+    date: string;
 }
 
 export interface PaginatedOrders {
@@ -159,6 +160,7 @@ export interface SharedData {
     auth: Auth;
     currentOrganization?: Organization;
     flash?: FlashMessages;
+    today: string;
     ziggy: Config & { location: string };
     [key: string]: unknown;
 }
