@@ -21,7 +21,7 @@ import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
 import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
 import PublicLayout from '@/layouts/PublicLayout';
-import { type CartItem, type PublicOrganization } from '@/types';
+import { type CartItem, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
 
 const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
 
@@ -32,9 +32,11 @@ function flattenFormErrors(errors: Record<string, string | string[]>): string[] 
 interface CheckoutProps {
     organization: PublicOrganization;
     zones: Zone[];
+    customer: Customer | null;
+    addresses: CustomerAddress[];
 }
 
-export default function Checkout({ organization, zones }: CheckoutProps) {
+export default function Checkout({ organization, zones, customer, addresses }: CheckoutProps) {
     const didInit = useRef(false);
     const errorBannerRef = useRef<HTMLDivElement>(null);
     const [cartItems, setCartItems] = useState<CartItem[] | null>(null);
@@ -43,6 +45,7 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
     const [mapsLinkInput, setMapsLinkInput] = useState('');
     const [mapsLinkError, setMapsLinkError] = useState<string | null>(null);
     const [mapsLinkResolving, setMapsLinkResolving] = useState(false);
+    const [useCustomAddress, setUseCustomAddress] = useState(addresses.length === 0);
 
     const { data, setData, post, processing, errors, transform } = useForm({
         organization_id: organization.id,
@@ -56,6 +59,9 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
         longitude: null as number | null,
         delivery_maps_url: '' as string,
         zone_id: '' as string,
+        address_id: '' as string,
+        save_address: false as boolean,
+        address_label: '',
         payment_method: 'cash' as 'cash' | 'transfer',
         items: [] as Array<{
             product_id: string;
@@ -63,6 +69,53 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
             quantity: number;
         }>,
     });
+
+    const selectSavedAddress = useCallback(
+        (address: CustomerAddress) => {
+            const lat = address.latitude !== null ? Number(address.latitude) : null;
+            const lng = address.longitude !== null ? Number(address.longitude) : null;
+            const zone = lat !== null && lng !== null ? findZoneForCoords(zones, lat, lng) : null;
+
+            setData((current) => ({
+                ...current,
+                address_id: address.id,
+                delivery_address: address.address,
+                delivery_city: address.city,
+                latitude: lat,
+                longitude: lng,
+                delivery_maps_url: address.maps_url ?? '',
+                zone_id: zone?.id ?? '',
+                save_address: false,
+                address_label: '',
+            }));
+            setMapsLinkInput(address.maps_url ?? '');
+            setLocationStatus(lat !== null && lng !== null || address.maps_url ? 'success' : 'idle');
+            setLocationError(null);
+            setMapsLinkError(null);
+            setUseCustomAddress(false);
+        },
+        [setData, zones],
+    );
+
+    const clearSavedAddressSelection = useCallback(() => {
+        setUseCustomAddress(true);
+        setData((current) => ({
+            ...current,
+            address_id: '',
+            delivery_address: '',
+            delivery_city: DEFAULT_DELIVERY_CITY,
+            latitude: null,
+            longitude: null,
+            delivery_maps_url: '',
+            zone_id: '',
+            save_address: false,
+            address_label: '',
+        }));
+        setMapsLinkInput('');
+        setLocationStatus('idle');
+        setLocationError(null);
+        setMapsLinkError(null);
+    }, [setData]);
 
     const applyCoordinates = useCallback(
         (latitude: number | null, longitude: number | null, mapsUrl: string | null = null) => {
@@ -182,21 +235,30 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
         }
 
         setCartItems(storedCart.items);
-        setData(
-            'items',
-            storedCart.items.map((item) => ({
+        setData((current) => ({
+            ...current,
+            items: storedCart.items.map((item) => ({
                 product_id: item.productId,
                 product_variant_id: item.variantId,
                 quantity: item.quantity,
             })),
-        );
-    }, [organization.id, organization.slug, setData]);
+            ...(customer
+                ? {
+                      customer_name: customer.name,
+                      customer_phone: customer.phone,
+                  }
+                : {}),
+        }));
+    }, [customer, organization.id, organization.slug, setData]);
 
     useEffect(() => {
         transform((payload) => ({
             ...payload,
             delivery_maps_url: payload.delivery_maps_url?.trim() || mapsLinkInput.trim() || null,
             zone_id: payload.zone_id || null,
+            address_id: payload.address_id || null,
+            save_address: payload.save_address || false,
+            address_label: payload.address_label?.trim() || null,
         }));
     }, [mapsLinkInput, transform]);
 
@@ -256,6 +318,8 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
     const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
     const orderTotal = subtotal + deliveryFee;
     const formErrors = useMemo(() => flattenFormErrors(errors), [errors]);
+    const showSavedAddresses = Boolean(customer && addresses.length > 0 && data.type === 'delivery' && !useCustomAddress);
+    const showDeliveryForm = data.type === 'delivery' && (!customer || addresses.length === 0 || useCustomAddress);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -271,7 +335,8 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
 
     const canSubmit =
         !processing &&
-        (data.type !== 'delivery' || (matchedZone !== null && data.delivery_address !== ''));
+        (data.type !== 'delivery' ||
+            (matchedZone !== null && (data.delivery_address !== '' || data.address_id !== '')));
 
     if (!cartItems) {
         return null;
@@ -358,6 +423,9 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                         longitude: null,
                                         zone_id: '',
                                         delivery_maps_url: '',
+                                        address_id: '',
+                                        save_address: false,
+                                        address_label: '',
                                     }));
                                     setLocationStatus('idle');
                                     setLocationError(null);
@@ -384,6 +452,12 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                     setLocationError(null);
                                     setMapsLinkInput('');
                                     setMapsLinkError(null);
+
+                                    if (customer && addresses.length > 0) {
+                                        selectSavedAddress(addresses[0]);
+                                    } else {
+                                        setUseCustomAddress(true);
+                                    }
                                 }}
                                 disabled={processing}
                             >
@@ -395,6 +469,46 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
 
                     {data.type === 'delivery' && (
                         <section className="space-y-4">
+                            {showSavedAddresses && (
+                                <div className="space-y-3">
+                                    <h3 className="font-semibold">Tus direcciones</h3>
+                                    <div className="grid gap-2">
+                                        {addresses.map((address) => (
+                                            <Button
+                                                key={address.id}
+                                                type="button"
+                                                variant={data.address_id === address.id ? 'default' : 'outline'}
+                                                className="h-auto justify-start rounded-xl px-4 py-3 text-left"
+                                                onClick={() => selectSavedAddress(address)}
+                                                disabled={processing}
+                                            >
+                                                <div className="space-y-0.5">
+                                                    {address.label && (
+                                                        <p className="font-medium">{address.label}</p>
+                                                    )}
+                                                    <p className={address.label ? 'text-sm opacity-90' : 'font-medium'}>
+                                                        {address.address}
+                                                    </p>
+                                                    <p className="text-muted-foreground text-xs">{address.city}</p>
+                                                </div>
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="px-0"
+                                        onClick={clearSavedAddressSelection}
+                                        disabled={processing}
+                                    >
+                                        Usar otra dirección
+                                    </Button>
+                                </div>
+                            )}
+
+                            {showDeliveryForm && (
+                                <>
                             <div className="grid gap-2">
                                 <Label htmlFor="delivery-address">Dirección</Label>
                                 <Input
@@ -591,6 +705,64 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                     </Button>
                                 )} */}
                             </div>
+
+                            {customer && !data.address_id && (
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={data.save_address}
+                                            onChange={(e) => setData('save_address', e.target.checked)}
+                                            disabled={processing}
+                                        />
+                                        Guardar esta dirección
+                                    </label>
+                                    {data.save_address && (
+                                        <Input
+                                            placeholder="Ej: Casa, Trabajo (opcional)"
+                                            value={data.address_label}
+                                            onChange={(e) => setData('address_label', e.target.value)}
+                                            disabled={processing}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                                </>
+                            )}
+
+                            {showSavedAddresses && data.address_id && zones.length > 0 && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="delivery-zone-saved">Zona de entrega</Label>
+                                    {gpsZone && (
+                                        <p className="text-sm text-green-700 dark:text-green-400">
+                                            Zona detectada: {gpsZone.name}. Puedes cambiarla si no es correcta.
+                                        </p>
+                                    )}
+                                    <Select
+                                        value={data.zone_id || undefined}
+                                        onValueChange={(id) => {
+                                            setData((current) => ({
+                                                ...current,
+                                                zone_id: id,
+                                            }));
+                                        }}
+                                        disabled={processing}
+                                    >
+                                        <SelectTrigger id="delivery-zone-saved">
+                                            <SelectValue placeholder="Selecciona tu zona" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {zones.map((zone) => (
+                                                <SelectItem key={zone.id} value={zone.id}>
+                                                    {zone.name} — {formatCurrency(zone.fee)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.delivery_address} />
+                                    <InputError message={errors.zone_id} />
+                                </div>
+                            )}
                         </section>
                     )}
 

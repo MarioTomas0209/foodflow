@@ -148,6 +148,17 @@ export interface Customer {
     phone: string;
 }
 
+export interface CustomerAddress {
+    id: string;
+    label: string | null;
+    address: string;
+    city: string;
+    latitude: string | null;
+    longitude: string | null;
+    maps_url: string | null;
+    is_default: boolean;
+}
+
 export interface BreadcrumbItem {
     title: string;
     href: string;

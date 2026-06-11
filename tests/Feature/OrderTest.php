@@ -2,6 +2,8 @@
 
 use App\Events\NewOrderReceived;
 use App\Models\Category;
+use App\Models\Customer;
+use App\Models\CustomerAddress;
 use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
@@ -25,6 +27,8 @@ test('guests can view checkout page for active organization', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('Public/Checkout')
             ->where('organization.slug', 'taqueria-checkout')
+            ->where('customer', null)
+            ->has('addresses', 0)
             ->has('zones', 0)
         );
 });
@@ -593,4 +597,203 @@ test('placing an order broadcasts NewOrderReceived on the organization channel',
             && $event->order->relationLoaded('items')
             && $event->order->items->count() === 1;
     });
+});
+
+test('authenticated customers receive saved addresses on checkout', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Checkout Cliente',
+        'slug' => 'checkout-cliente',
+        'status' => 'active',
+    ]);
+
+    $customer = Customer::create([
+        'name' => 'Ana Cliente',
+        'phone' => '9631112233',
+        'password' => 'secreta123',
+    ]);
+
+    CustomerAddress::create([
+        'customer_id' => $customer->id,
+        'label' => 'Casa',
+        'address' => '2da avenida poniente sur #54',
+        'city' => 'Comitán de Domínguez, Chiapas',
+        'is_default' => true,
+    ]);
+
+    $this->actingAs($customer, 'customer')
+        ->get(route('storefront.checkout', $organization->slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Public/Checkout')
+            ->where('customer.phone', '9631112233')
+            ->has('addresses', 1)
+            ->where('addresses.0.label', 'Casa')
+        );
+});
+
+test('authenticated customers get customer_id on orders and can save new addresses', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Pedido Cliente',
+        'slug' => 'pedido-cliente',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Tacos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco',
+        'price' => 25,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 30,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $customer = Customer::create([
+        'name' => 'Luis Cliente',
+        'phone' => '9634445566',
+        'password' => 'secreta123',
+    ]);
+
+    $this->actingAs($customer, 'customer')
+        ->post(route('storefront.orders.store', $organization->slug), [
+            'organization_id' => $organization->id,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'type' => 'delivery',
+            'delivery_address' => 'Calle nueva 10',
+            'delivery_city' => 'Comitán de Domínguez, Chiapas',
+            'latitude' => 16.2520,
+            'longitude' => -92.1350,
+            'save_address' => true,
+            'address_label' => 'Trabajo',
+            'payment_method' => 'cash',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'product_variant_id' => null,
+                    'quantity' => 1,
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $order = Order::query()->firstOrFail();
+
+    expect($order->customer_id)->toBe($customer->id);
+
+    $this->assertDatabaseHas('customer_addresses', [
+        'customer_id' => $customer->id,
+        'label' => 'Trabajo',
+        'address' => 'Calle nueva 10',
+        'is_default' => true,
+    ]);
+});
+
+test('orders with saved address_id do not create duplicate addresses', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Dirección Guardada',
+        'slug' => 'direccion-guardada',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Tacos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco',
+        'price' => 25,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 30,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $customer = Customer::create([
+        'name' => 'Marta Cliente',
+        'phone' => '9638889900',
+        'password' => 'secreta123',
+    ]);
+
+    $address = CustomerAddress::create([
+        'customer_id' => $customer->id,
+        'label' => 'Casa',
+        'address' => 'Av. Central 100',
+        'city' => 'Comitán de Domínguez, Chiapas',
+        'latitude' => 16.2520,
+        'longitude' => -92.1350,
+        'is_default' => true,
+    ]);
+
+    $this->actingAs($customer, 'customer')
+        ->post(route('storefront.orders.store', $organization->slug), [
+            'organization_id' => $organization->id,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'type' => 'delivery',
+            'address_id' => $address->id,
+            'delivery_address' => 'ignored',
+            'delivery_city' => 'Comitán de Domínguez, Chiapas',
+            'latitude' => 16.2520,
+            'longitude' => -92.1350,
+            'save_address' => true,
+            'payment_method' => 'cash',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'product_variant_id' => null,
+                    'quantity' => 1,
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(CustomerAddress::query()->where('customer_id', $customer->id)->count())->toBe(1);
+
+    $this->assertDatabaseHas('orders', [
+        'customer_id' => $customer->id,
+        'delivery_address' => 'Av. Central 100',
+    ]);
 });

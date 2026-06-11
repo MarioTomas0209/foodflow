@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Public;
 
-use App\Http\Controllers\Controller;
 use App\Events\NewOrderReceived;
+use App\Http\Controllers\Controller;
+use App\Models\CustomerAddress;
 use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
@@ -12,6 +13,7 @@ use App\Support\GoogleMapsUrlParser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -29,6 +31,8 @@ class OrderController extends Controller
             ->where('status', 'active')
             ->firstOrFail();
 
+        $customer = Auth::guard('customer')->user();
+
         return Inertia::render('Public/Checkout', [
             'organization' => array_merge($organization->only([
                 'id',
@@ -44,6 +48,16 @@ class OrderController extends Controller
             'zones' => $organization->deliveryZones()
                 ->where('is_active', true)
                 ->get(['id', 'name', 'fee', 'center_lat', 'center_lng', 'radius_km']),
+            'customer' => $customer ? [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'phone' => $customer->phone,
+            ] : null,
+            'addresses' => $customer
+                ? $customer->addresses()->orderByDesc('is_default')->orderByDesc('created_at')->get([
+                    'id', 'label', 'address', 'city', 'latitude', 'longitude', 'maps_url', 'is_default',
+                ])
+                : [],
         ]);
     }
 
@@ -84,6 +98,8 @@ class OrderController extends Controller
             ->where('status', 'active')
             ->firstOrFail();
 
+        $customer = Auth::guard('customer')->user();
+
         $validated = $request->validate([
             'organization_id' => ['required', Rule::exists('organizations', 'id')],
             'customer_name' => ['required', 'string', 'max:255'],
@@ -101,6 +117,14 @@ class OrderController extends Controller
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'zone_id' => ['nullable', 'exists:delivery_zones,id'],
             'delivery_maps_url' => ['nullable', 'string', 'max:2048'],
+            'address_id' => array_merge(
+                ['nullable'],
+                $customer
+                    ? [Rule::exists('customer_addresses', 'id')->where('customer_id', $customer->id)]
+                    : ['prohibited'],
+            ),
+            'save_address' => ['nullable', 'boolean'],
+            'address_label' => ['nullable', 'string', 'max:255'],
             'payment_method' => ['required', Rule::in(['cash', 'transfer'])],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', Rule::exists('products', 'id')],
@@ -109,6 +133,17 @@ class OrderController extends Controller
         ]);
 
         abort_unless($validated['organization_id'] === $organization->id, 403);
+
+        if ($customer && ! empty($validated['address_id'])) {
+            /** @var CustomerAddress $savedAddress */
+            $savedAddress = $customer->addresses()->findOrFail($validated['address_id']);
+
+            $validated['delivery_address'] = $savedAddress->address;
+            $validated['delivery_city'] = $savedAddress->city;
+            $validated['latitude'] = $savedAddress->latitude !== null ? (float) $savedAddress->latitude : null;
+            $validated['longitude'] = $savedAddress->longitude !== null ? (float) $savedAddress->longitude : null;
+            $validated['delivery_maps_url'] = $savedAddress->maps_url;
+        }
 
         $productIds = collect($validated['items'])->pluck('product_id')->unique()->values();
 
@@ -235,6 +270,7 @@ class OrderController extends Controller
         $order = DB::transaction(function () use ($organization, $validated, $resolvedItems, $subtotal, $deliveryFee, $deliveryZoneId, $total) {
             $order = Order::create([
                 'organization_id' => $organization->id,
+                'customer_id' => Auth::guard('customer')->id(),
                 'customer_name' => $validated['customer_name'],
                 'customer_phone' => $validated['customer_phone'],
                 'customer_notes' => $validated['customer_notes'] ?? null,
@@ -272,6 +308,22 @@ class OrderController extends Controller
 
             return $order;
         });
+
+        if ($customer && $validated['type'] === 'delivery') {
+            if (! empty($validated['address_id'])) {
+                // Dirección existente — no hacer nada
+            } elseif ($validated['save_address'] ?? false) {
+                $customer->addresses()->create([
+                    'label' => $validated['address_label'] ?? null,
+                    'address' => $validated['delivery_address'],
+                    'city' => $validated['delivery_city'],
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                    'maps_url' => $validated['delivery_maps_url'] ?? null,
+                    'is_default' => $customer->addresses()->count() === 0,
+                ]);
+            }
+        }
 
         $order->load('items');
         broadcast(new NewOrderReceived($order))->toOthers();
