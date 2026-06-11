@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
 use App\Events\NewOrderReceived;
+use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
+use App\Support\GoogleMapsUrlParser;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +47,36 @@ class OrderController extends Controller
         ]);
     }
 
+    public function resolveMapsUrl(Request $request, string $slug): JsonResponse
+    {
+        Organization::query()
+            ->where('slug', $slug)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'url' => ['required', 'string', 'max:2048'],
+        ]);
+
+        $coords = GoogleMapsUrlParser::parse($validated['url']);
+
+        if ($coords !== null) {
+            return response()->json($coords);
+        }
+
+        if (GoogleMapsUrlParser::isShareUrl($validated['url'])) {
+            return response()->json([
+                'latitude' => null,
+                'longitude' => null,
+                'maps_url' => trim($validated['url']),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'No pudimos leer las coordenadas del enlace.',
+        ], 422);
+    }
+
     public function store(Request $request, string $slug): RedirectResponse
     {
         $organization = Organization::query()
@@ -64,18 +97,10 @@ class OrderController extends Controller
                 'string',
                 Rule::in([self::DELIVERY_CITY]),
             ],
-            'latitude' => [
-                Rule::requiredIf($request->input('type') === 'delivery'),
-                'nullable',
-                'numeric',
-                'between:-90,90',
-            ],
-            'longitude' => [
-                Rule::requiredIf($request->input('type') === 'delivery'),
-                'nullable',
-                'numeric',
-                'between:-180,180',
-            ],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'zone_id' => ['nullable', 'exists:delivery_zones,id'],
+            'delivery_maps_url' => ['nullable', 'string', 'max:2048'],
             'payment_method' => ['required', Rule::in(['cash', 'transfer'])],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', Rule::exists('products', 'id')],
@@ -177,14 +202,27 @@ class OrderController extends Controller
         $deliveryZoneId = null;
 
         if ($validated['type'] === 'delivery') {
-            $zone = $organization->findDeliveryZoneFor(
-                $validated['latitude'],
-                $validated['longitude'],
-            );
+            $zone = null;
+            $latitude = $validated['latitude'] ?? null;
+            $longitude = $validated['longitude'] ?? null;
+
+            if ($latitude && $longitude) {
+                $zone = $organization->findDeliveryZoneFor($latitude, $longitude);
+            }
+
+            if ($zone === null) {
+                if (! empty($validated['zone_id'])) {
+                    $zone = DeliveryZone::find($validated['zone_id']);
+
+                    if ($zone && $zone->organization_id !== $organization->id) {
+                        $zone = null;
+                    }
+                }
+            }
 
             if ($zone === null) {
                 throw ValidationException::withMessages([
-                    'delivery_address' => 'Lo sentimos, tu dirección está fuera de nuestra zona de cobertura.',
+                    'delivery_address' => 'Selecciona una zona de entrega válida.',
                 ]);
             }
 
@@ -203,8 +241,9 @@ class OrderController extends Controller
                 'type' => $validated['type'],
                 'delivery_address' => $validated['type'] === 'delivery' ? $validated['delivery_address'] : null,
                 'delivery_city' => $validated['type'] === 'delivery' ? $validated['delivery_city'] : null,
-                'latitude' => $validated['type'] === 'delivery' ? $validated['latitude'] : null,
-                'longitude' => $validated['type'] === 'delivery' ? $validated['longitude'] : null,
+                'latitude' => $validated['type'] === 'delivery' ? ($validated['latitude'] ?? null) : null,
+                'longitude' => $validated['type'] === 'delivery' ? ($validated['longitude'] ?? null) : null,
+                'delivery_maps_url' => $validated['type'] === 'delivery' ? ($validated['delivery_maps_url'] ?? null) : null,
                 'delivery_zone_id' => $deliveryZoneId,
                 'status' => 'pending',
                 'payment_method' => $validated['payment_method'],
@@ -255,6 +294,7 @@ class OrderController extends Controller
                 'delivery_city',
                 'latitude',
                 'longitude',
+                'delivery_maps_url',
                 'status',
                 'payment_method',
                 'subtotal',

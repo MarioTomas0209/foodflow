@@ -50,6 +50,7 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
 
 Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');
 Route::get('/{slug}/checkout', [OrderController::class, 'checkout'])->name('storefront.checkout')->where('slug', $slugPattern);
+Route::get('/{slug}/maps/resolve', [OrderController::class, 'resolveMapsUrl'])->name('storefront.maps.resolve')->where('slug', $slugPattern);
 Route::post('/{slug}/orders', [OrderController::class, 'store'])->name('storefront.orders.store')->where('slug', $slugPattern);
 
 Route::get('/{slug}', [StorefrontController::class, 'show'])

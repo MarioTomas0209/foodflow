@@ -1,5 +1,5 @@
 import { formatCurrency } from '@/lib/format-currency';
-import { buildMapsUrl } from '@/lib/maps';
+import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import { type Order, type PublicOrganization } from '@/types';
 
 export function buildWhatsAppMessage(order: Order, organization: PublicOrganization): string {
@@ -14,8 +14,10 @@ export function buildWhatsAppMessage(order: Order, organization: PublicOrganizat
     if (order.type === 'delivery') {
         lines.push(`*Dirección:* ${order.delivery_address ?? ''}, ${order.delivery_city ?? ''}`);
 
-        if (order.latitude && order.longitude) {
-            lines.push(`*Ubicación:* ${buildMapsUrl(order.latitude, order.longitude)}`);
+        const mapsUrl = getOrderDeliveryMapsUrl(order);
+
+        if (mapsUrl) {
+            lines.push(`*Ubicación:* ${mapsUrl}`);
         }
     }
 

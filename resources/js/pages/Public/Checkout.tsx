@@ -7,15 +7,27 @@ import { FormTextarea } from '@/components/menu/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { clearCartStorage, loadCartFromStorage } from '@/lib/cart-storage';
 import { findZoneForCoords, type Zone } from '@/lib/delivery-zones';
 import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
+import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
 import PublicLayout from '@/layouts/PublicLayout';
 import { type CartItem, type PublicOrganization } from '@/types';
 
 const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
+
+function flattenFormErrors(errors: Record<string, string | string[]>): string[] {
+    return Object.values(errors).flatMap((message) => (Array.isArray(message) ? message : [message])).filter(Boolean);
+}
 
 interface CheckoutProps {
     organization: PublicOrganization;
@@ -24,11 +36,15 @@ interface CheckoutProps {
 
 export default function Checkout({ organization, zones }: CheckoutProps) {
     const didInit = useRef(false);
+    const errorBannerRef = useRef<HTMLDivElement>(null);
     const [cartItems, setCartItems] = useState<CartItem[] | null>(null);
     const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [locationError, setLocationError] = useState<string | null>(null);
+    const [mapsLinkInput, setMapsLinkInput] = useState('');
+    const [mapsLinkError, setMapsLinkError] = useState<string | null>(null);
+    const [mapsLinkResolving, setMapsLinkResolving] = useState(false);
 
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing, errors, transform } = useForm({
         organization_id: organization.id,
         customer_name: '',
         customer_phone: '',
@@ -38,6 +54,8 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
         delivery_city: DEFAULT_DELIVERY_CITY,
         latitude: null as number | null,
         longitude: null as number | null,
+        delivery_maps_url: '' as string,
+        zone_id: '' as string,
         payment_method: 'cash' as 'cash' | 'transfer',
         items: [] as Array<{
             product_id: string;
@@ -46,18 +64,45 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
         }>,
     });
 
+    const applyCoordinates = useCallback(
+        (latitude: number | null, longitude: number | null, mapsUrl: string | null = null) => {
+            setData((current) => ({
+                ...current,
+                latitude,
+                longitude,
+                delivery_maps_url: mapsUrl ?? '',
+            }));
+            if (mapsUrl) {
+                setMapsLinkInput(mapsUrl);
+            }
+            setLocationStatus('success');
+            setLocationError(null);
+            setMapsLinkError(null);
+        },
+        [setData],
+    );
+
+    const clearCoordinates = useCallback(() => {
+        setData((current) => ({
+            ...current,
+            latitude: null,
+            longitude: null,
+            delivery_maps_url: '',
+        }));
+        setMapsLinkInput('');
+        setLocationStatus('idle');
+        setLocationError(null);
+        setMapsLinkError(null);
+    }, [setData]);
+
     const captureLocation = useCallback(async () => {
         setLocationStatus('loading');
         setLocationError(null);
+        setMapsLinkError(null);
 
         try {
             const coords = await requestGeolocation();
-            setData((current) => ({
-                ...current,
-                latitude: coords.latitude,
-                longitude: coords.longitude,
-            }));
-            setLocationStatus('success');
+            applyCoordinates(coords.latitude, coords.longitude, null);
         } catch (error) {
             setLocationStatus('error');
             setLocationError(error instanceof Error ? error.message : 'No pudimos obtener tu ubicación.');
@@ -65,9 +110,62 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                 ...current,
                 latitude: null,
                 longitude: null,
+                delivery_maps_url: '',
             }));
+            setMapsLinkInput('');
         }
-    }, [setData]);
+    }, [applyCoordinates, setData]);
+
+    const handleMapsLinkBlur = useCallback(async () => {
+        const trimmed = mapsLinkInput.trim();
+
+        if (!trimmed) {
+            if (data.latitude !== null || data.longitude !== null) {
+                clearCoordinates();
+            }
+
+            setMapsLinkError(null);
+            return;
+        }
+
+        const localParsed = parseGoogleMapsUrl(trimmed);
+
+        if (localParsed) {
+            applyCoordinates(localParsed.latitude, localParsed.longitude, trimmed);
+            return;
+        }
+
+        if (!isGoogleMapsShareUrl(trimmed)) {
+            setMapsLinkError('Pega un enlace de Google Maps o escribe las coordenadas (lat, lng).');
+            return;
+        }
+
+        setMapsLinkResolving(true);
+        setMapsLinkError(null);
+
+        try {
+            const resolved = await resolveGoogleMapsUrl(
+                trimmed,
+                route('storefront.maps.resolve', organization.slug),
+            );
+
+            if (!resolved) {
+                setMapsLinkError('Pega un enlace válido de Google Maps.');
+                return;
+            }
+
+            applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
+        } finally {
+            setMapsLinkResolving(false);
+        }
+    }, [
+        applyCoordinates,
+        clearCoordinates,
+        data.latitude,
+        data.longitude,
+        mapsLinkInput,
+        organization.slug,
+    ]);
 
     useEffect(() => {
         if (didInit.current) {
@@ -95,12 +193,32 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
     }, [organization.id, organization.slug, setData]);
 
     useEffect(() => {
-        if (data.type !== 'delivery' || locationStatus !== 'idle') {
+        transform((payload) => ({
+            ...payload,
+            delivery_maps_url: payload.delivery_maps_url?.trim() || mapsLinkInput.trim() || null,
+            zone_id: payload.zone_id || null,
+        }));
+    }, [mapsLinkInput, transform]);
+
+    useEffect(() => {
+        if (Object.keys(errors).length === 0) {
             return;
         }
 
-        void captureLocation();
-    }, [data.type, locationStatus, captureLocation]);
+        errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [errors]);
+
+    useEffect(() => {
+        if (locationStatus !== 'success' || data.latitude === null || data.longitude === null) {
+            return;
+        }
+
+        const gpsZone = findZoneForCoords(zones, data.latitude, data.longitude);
+
+        if (gpsZone) {
+            setData('zone_id', gpsZone.id);
+        }
+    }, [locationStatus, data.latitude, data.longitude, zones, setData]);
 
     const subtotal = useMemo(
         () => (cartItems ?? []).reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -108,45 +226,52 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
     );
 
     const matchedZone = useMemo(() => {
-        if (
-            data.type !== 'delivery' ||
-            locationStatus !== 'success' ||
-            data.latitude === null ||
-            data.longitude === null
-        ) {
+        if (data.type !== 'delivery') {
+            return null;
+        }
+
+        if (locationStatus === 'success' && data.latitude !== null && data.longitude !== null) {
+            const gpsZone = findZoneForCoords(zones, data.latitude, data.longitude);
+
+            if (gpsZone) {
+                return gpsZone;
+            }
+        }
+
+        if (data.zone_id) {
+            return zones.find((zone) => zone.id === data.zone_id) ?? null;
+        }
+
+        return null;
+    }, [data.type, data.latitude, data.longitude, data.zone_id, locationStatus, zones]);
+
+    const gpsZone = useMemo(() => {
+        if (locationStatus !== 'success' || data.latitude === null || data.longitude === null) {
             return null;
         }
 
         return findZoneForCoords(zones, data.latitude, data.longitude);
-    }, [data.type, data.latitude, data.longitude, locationStatus, zones]);
+    }, [locationStatus, data.latitude, data.longitude, zones]);
 
     const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
     const orderTotal = subtotal + deliveryFee;
-    const isOutOfCoverage =
-        data.type === 'delivery' &&
-        locationStatus === 'success' &&
-        data.latitude !== null &&
-        data.longitude !== null &&
-        matchedZone === null;
+    const formErrors = useMemo(() => flattenFormErrors(errors), [errors]);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
 
-        if (data.type === 'delivery' && (data.latitude === null || data.longitude === null)) {
-            setLocationError('Necesitamos tu ubicación para entregar a domicilio.');
-            setLocationStatus('error');
-            return;
-        }
-
         post(route('storefront.orders.store', organization.slug), {
+            preserveScroll: true,
             onSuccess: () => clearCartStorage(),
+            onError: () => {
+                errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            },
         });
     };
 
     const canSubmit =
         !processing &&
-        !isOutOfCoverage &&
-        (data.type !== 'delivery' || (data.latitude !== null && data.longitude !== null && locationStatus === 'success'));
+        (data.type !== 'delivery' || (matchedZone !== null && data.delivery_address !== ''));
 
     if (!cartItems) {
         return null;
@@ -172,7 +297,22 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                     <p className="text-muted-foreground mt-1 text-sm">Completa tus datos para finalizar.</p>
                 </div>
 
-                <form onSubmit={submit} className="flex flex-col gap-6">
+                {formErrors.length > 0 && (
+                    <div
+                        ref={errorBannerRef}
+                        role="alert"
+                        className="border-destructive/40 bg-destructive/10 space-y-2 rounded-xl border p-4 text-sm"
+                    >
+                        <p className="text-destructive font-medium">No pudimos confirmar tu pedido</p>
+                        <ul className="text-destructive/90 list-inside list-disc space-y-1">
+                            {formErrors.map((message) => (
+                                <li key={message}>{message}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
+                <form onSubmit={submit} noValidate className="flex flex-col gap-6">
                     <section className="space-y-4">
                         <h2 className="text-lg font-semibold">Tus datos</h2>
 
@@ -216,9 +356,13 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                         type: 'pickup',
                                         latitude: null,
                                         longitude: null,
+                                        zone_id: '',
+                                        delivery_maps_url: '',
                                     }));
                                     setLocationStatus('idle');
                                     setLocationError(null);
+                                    setMapsLinkInput('');
+                                    setMapsLinkError(null);
                                 }}
                                 disabled={processing}
                             >
@@ -230,9 +374,16 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                 size="lg"
                                 className="h-auto rounded-xl py-4"
                                 onClick={() => {
-                                    setData('type', 'delivery');
-                                    setData('delivery_city', DEFAULT_DELIVERY_CITY);
+                                    setData((current) => ({
+                                        ...current,
+                                        type: 'delivery',
+                                        delivery_city: DEFAULT_DELIVERY_CITY,
+                                        zone_id: '',
+                                    }));
                                     setLocationStatus('idle');
+                                    setLocationError(null);
+                                    setMapsLinkInput('');
+                                    setMapsLinkError(null);
                                 }}
                                 disabled={processing}
                             >
@@ -272,13 +423,58 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                 <InputError message={errors.delivery_city} />
                             </div>
 
+                            {zones.length > 0 && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="delivery-zone">Zona de entrega</Label>
+                                    {gpsZone && (
+                                        <p className="text-sm text-green-700 dark:text-green-400">
+                                            Zona detectada: {gpsZone.name}. Puedes cambiarla si no es correcta.
+                                        </p>
+                                    )}
+                                    {locationStatus === 'success' && !gpsZone && (
+                                        <p className="text-muted-foreground text-sm">
+                                            No detectamos cobertura en tu ubicación. Selecciona tu zona manualmente.
+                                        </p>
+                                    )}
+                                    {!gpsZone && locationStatus !== 'success' && (
+                                        <p className="text-muted-foreground text-sm">
+                                            Selecciona la zona donde recibirás tu pedido.
+                                        </p>
+                                    )}
+                                    <Select
+                                        value={data.zone_id || undefined}
+                                        onValueChange={(id) => {
+                                            setData((current) => ({
+                                                ...current,
+                                                zone_id: id,
+                                            }));
+                                        }}
+                                        disabled={processing}
+                                    >
+                                        <SelectTrigger id="delivery-zone">
+                                            <SelectValue placeholder="Selecciona tu zona" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {zones.map((zone) => (
+                                                <SelectItem key={zone.id} value={zone.id}>
+                                                    {zone.name} — {formatCurrency(zone.fee)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.delivery_address} />
+                                    <InputError message={errors.zone_id} />
+                                </div>
+                            )}
+
                             <div className="bg-muted/40 space-y-3 rounded-xl border p-4">
                                 <div className="flex items-start gap-3">
                                     <MapPin className="text-primary mt-0.5 size-5 shrink-0" />
                                     <div className="space-y-1 text-sm">
-                                        <p className="font-medium">Ubicación exacta</p>
+                                        <p className="font-medium">Ubicación exacta (opcional)</p>
                                         <p className="text-muted-foreground">
-                                            Usamos tu GPS para que el repartidor llegue a tu domicilio con precisión.
+                                            Pega un enlace de Google Maps para
+                                            ayudar al repartidor a llegar con precisión.
                                         </p>
                                     </div>
                                 </div>
@@ -290,28 +486,87 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                     </p>
                                 )}
 
-                                {locationStatus === 'success' && data.latitude !== null && data.longitude !== null && (
-                                    <>
-                                        {matchedZone ? (
-                                            <p className="text-sm text-green-700 dark:text-green-400">
-                                                Ubicación capturada. Zona: {matchedZone.name}
-                                            </p>
-                                        ) : (
-                                            <p className="text-destructive text-sm">
-                                                Tu dirección está fuera de nuestra zona de cobertura.
+                                {locationStatus === 'success' &&
+                                    (data.delivery_maps_url ||
+                                        (data.latitude !== null && data.longitude !== null)) && (
+                                    <div className="space-y-4 text-sm">
+                                        <p className="text-green-700 dark:text-green-400">
+                                            {data.delivery_maps_url
+                                                ? 'Enlace de ubicación guardado.'
+                                                : 'Ubicación capturada verifica que esté correcta tu dirección.'}
+                                        </p>
+                                        {(data.delivery_maps_url ||
+                                            (data.latitude !== null && data.longitude !== null)) && (
+                                            <p>
+                                                <a
+                                                    href={
+                                                        data.delivery_maps_url ||
+                                                        buildMapsUrl(data.latitude!, data.longitude!)
+                                                    }
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-primary bg-blue-500 p-1 rounded-md font-medium underline-offset-4 hover:underline"
+                                                >
+                                                    Ver ubicación en Google Maps
+                                                </a>
                                             </p>
                                         )}
-                                    </>
+                                        {data.latitude !== null && data.longitude !== null && (
+                                            <div className="text-muted-foreground tabular-nums">
+                                                <p>
+                                                    {Number(data.latitude).toFixed(6)},{' '}
+                                                    {Number(data.longitude).toFixed(6)}
+                                                </p>
+                                            </div>
+                                        )}
+                                   
+                                        {data.delivery_maps_url &&
+                                            data.latitude === null &&
+                                            data.longitude === null && (
+                                                <p className="text-muted-foreground">
+                                                    Selecciona tu zona de entrega arriba para calcular el envío.
+                                                </p>
+                                            )}
+                                    </div>
                                 )}
 
+                                <div className="grid gap-2">
+                                    <Label htmlFor="maps-link">Enlace de Google Maps</Label>
+                                    <Input
+                                        id="maps-link"
+                                        type="text"
+                                        inputMode="url"
+                                        value={mapsLinkInput}
+                                        onChange={(e) => {
+                                            setMapsLinkInput(e.target.value);
+                                            setMapsLinkError(null);
+                                        }}
+                                        onBlur={() => {
+                                            void handleMapsLinkBlur();
+                                        }}
+                                        disabled={processing || mapsLinkResolving}
+                                        placeholder="https://maps.app.goo.gl/... o 16.2520, -92.1350"
+                                    />
+                                    {mapsLinkResolving && (
+                                        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+                                            <LoaderCircle className="size-4 animate-spin" />
+                                            Leyendo enlace de Google Maps…
+                                        </p>
+                                    )}
+                                    {mapsLinkError && <p className="text-destructive text-sm">{mapsLinkError}</p>}
+                                    <InputError message={errors.delivery_maps_url} />
+                                </div>
+
                                 {(locationStatus === 'error' || locationError) && (
-                                    <p className="text-destructive text-sm">{locationError}</p>
+                                    <p className="text-muted-foreground text-sm">
+                                        {locationError ?? 'No pudimos obtener tu ubicación. Puedes seleccionar tu zona arriba.'}
+                                    </p>
                                 )}
 
                                 <InputError message={errors.latitude} />
                                 <InputError message={errors.longitude} />
 
-                                {(locationStatus === 'error' || locationStatus === 'success') && (
+                                {/* {locationStatus !== 'loading' && (
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -322,10 +577,19 @@ export default function Checkout({ organization, zones }: CheckoutProps) {
                                         }}
                                         disabled={processing}
                                     >
-                                        <RefreshCw className="size-4" />
-                                        Actualizar ubicación
+                                        {locationStatus === 'success' || locationStatus === 'error' ? (
+                                            <>
+                                                <RefreshCw className="size-4" />
+                                                Actualizar ubicación
+                                            </>
+                                        ) : (
+                                            <>
+                                                <MapPin className="size-4" />
+                                                Usar mi ubicación
+                                            </>
+                                        )}
                                     </Button>
-                                )}
+                                )} */}
                             </div>
                         </section>
                     )}

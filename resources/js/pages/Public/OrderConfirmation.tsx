@@ -4,7 +4,7 @@ import { CheckCircle2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/lib/format-currency';
-import { buildMapsUrl } from '@/lib/maps';
+import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import { buildWhatsAppUrl } from '@/lib/whatsapp';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
@@ -18,6 +18,7 @@ interface OrderConfirmationProps {
 export default function OrderConfirmation({ order, organization }: OrderConfirmationProps) {
     const namedRoute = useNamedRoute();
     const whatsAppUrl = buildWhatsAppUrl(order, organization);
+    const deliveryMapsUrl = getOrderDeliveryMapsUrl(order);
 
     return (
         <PublicLayout organization={organization}>
@@ -51,11 +52,11 @@ export default function OrderConfirmation({ order, organization }: OrderConfirma
                                     <span className="text-muted-foreground">Dirección:</span> {order.delivery_address},{' '}
                                     {order.delivery_city}
                                 </p>
-                                {order.latitude && order.longitude && (
+                                {deliveryMapsUrl && (
                                     <p>
                                         <span className="text-muted-foreground">Ubicación:</span>{' '}
                                         <a
-                                            href={buildMapsUrl(order.latitude, order.longitude)}
+                                            href={deliveryMapsUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-primary underline-offset-4 hover:underline"

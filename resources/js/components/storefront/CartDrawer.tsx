@@ -19,7 +19,8 @@ interface CartDrawerProps {
     items: CartItem[];
     subtotal: number;
     isEmpty: boolean;
-    onIncrement: (productId: string, variantId: string | null) => void;
+    stockMessage: string | null;
+    onIncrement: (productId: string, variantId: string | null) => boolean;
     onDecrement: (productId: string, variantId: string | null) => void;
     onRemove: (productId: string, variantId: string | null) => void;
     onCheckout: () => void;
@@ -31,6 +32,7 @@ export function CartDrawer({
     items,
     subtotal,
     isEmpty,
+    stockMessage,
     onIncrement,
     onDecrement,
     onRemove,
@@ -45,11 +47,18 @@ export function CartDrawer({
                 </SheetHeader>
 
                 <div className="flex flex-1 flex-col gap-4 overflow-y-auto py-4">
+                    {stockMessage && (
+                        <p className="text-destructive bg-destructive/10 rounded-lg px-3 py-2 text-sm">{stockMessage}</p>
+                    )}
                     {isEmpty ? (
                         <p className="text-muted-foreground py-8 text-center text-sm">Tu carrito está vacío.</p>
                     ) : (
                         <ul className="flex flex-col gap-4">
-                            {items.map((item) => (
+                            {items.map((item) => {
+                                const atMaxStock =
+                                    item.maxStock !== null && item.quantity >= item.maxStock;
+
+                                return (
                                 <li
                                     key={`${item.productId}:${item.variantId ?? 'base'}`}
                                     className="flex flex-col gap-3"
@@ -62,6 +71,9 @@ export function CartDrawer({
                                             )}
                                             <p className="text-muted-foreground mt-1 text-sm tabular-nums">
                                                 {formatCurrency(item.price)} c/u
+                                                {item.maxStock !== null && (
+                                                    <span className="ml-2">· máx. {item.maxStock}</span>
+                                                )}
                                             </p>
                                         </div>
                                         <Button
@@ -96,6 +108,7 @@ export function CartDrawer({
                                                 variant="ghost"
                                                 size="icon"
                                                 className="size-8"
+                                                disabled={atMaxStock}
                                                 onClick={() => onIncrement(item.productId, item.variantId)}
                                                 aria-label="Aumentar cantidad"
                                             >
@@ -107,7 +120,8 @@ export function CartDrawer({
                                         </span>
                                     </div>
                                 </li>
-                            ))}
+                                );
+                            })}
                         </ul>
                     )}
                 </div>

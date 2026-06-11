@@ -4,13 +4,15 @@ import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { stockLimitMessage } from '@/lib/cart-stock';
 import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
 import { type Product, type ProductVariant } from '@/types';
 
 interface ProductCardProps {
     product: Product;
-    onAdd: (product: Product, variant?: ProductVariant) => void;
+    getQuantityInCart: (productId: string, variantId: string | null) => number;
+    onAdd: (product: Product, variant?: ProductVariant) => boolean;
 }
 
 function isInStock(stock: number | null): boolean {
@@ -23,34 +25,47 @@ function firstAvailableVariantId(product: Product): string | null {
     return available?.id ?? product.variants[0]?.id ?? null;
 }
 
-export function ProductCard({ product, onAdd }: ProductCardProps) {
+export function ProductCard({ product, getQuantityInCart, onAdd }: ProductCardProps) {
     const [selectedVariantId, setSelectedVariantId] = useState<string | null>(() =>
         product.has_variants ? firstAvailableVariantId(product) : null,
     );
+    const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
     const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId);
+    const quantityInCart = getQuantityInCart(product.id, product.has_variants ? selectedVariantId : null);
     const hasAvailableVariants = product.variants.some((variant) => isInStock(variant.stock));
     const isSoldOut = product.has_variants ? !hasAvailableVariants : product.stock === 0;
 
+    const activeStock = product.has_variants
+        ? selectedVariant
+            ? selectedVariant.stock
+            : 0
+        : product.stock;
+    const atStockLimit = activeStock !== null && quantityInCart >= activeStock;
+
     const canAdd = useMemo(() => {
         if (product.has_variants) {
-            return selectedVariant !== undefined && isInStock(selectedVariant.stock);
+            return selectedVariant !== undefined && isInStock(selectedVariant.stock) && !atStockLimit;
         }
 
-        return isInStock(product.stock);
-    }, [product.has_variants, product.stock, selectedVariant]);
+        return isInStock(product.stock) && !atStockLimit;
+    }, [atStockLimit, product.has_variants, product.stock, selectedVariant]);
 
     const handleAdd = () => {
         if (!canAdd) {
+            setLimitMessage(stockLimitMessage(activeStock, quantityInCart));
             return;
         }
 
-        if (product.has_variants && selectedVariant) {
-            onAdd(product, selectedVariant);
+        const added =
+            product.has_variants && selectedVariant ? onAdd(product, selectedVariant) : onAdd(product);
+
+        if (!added) {
+            setLimitMessage(stockLimitMessage(activeStock, quantityInCart));
             return;
         }
 
-        onAdd(product);
+        setLimitMessage(null);
     };
 
     return (
@@ -91,7 +106,10 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
                                                 'h-auto rounded-full px-3 py-2',
                                                 variantSoldOut && 'opacity-60',
                                             )}
-                                            onClick={() => setSelectedVariantId(variant.id)}
+                                            onClick={() => {
+                                                setSelectedVariantId(variant.id);
+                                                setLimitMessage(null);
+                                            }}
                                         >
                                             <span>{variant.name}</span>
                                             <span className="ml-2 font-semibold tabular-nums">
@@ -115,16 +133,24 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
                         Agotado
                     </div>
                 ) : (
-                    <Button
-                        type="button"
-                        size="lg"
-                        className="w-full shrink-0 rounded-xl sm:w-auto sm:px-4"
-                        disabled={!canAdd}
-                        onClick={handleAdd}
-                    >
-                        <Plus className="size-5" />
-                        Agregar
-                    </Button>
+                    <div className="flex w-full shrink-0 flex-col items-stretch gap-2 sm:w-auto">
+                        {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
+                        {quantityInCart > 0 && activeStock !== null && (
+                            <p className="text-muted-foreground text-xs">
+                                En tu pedido: {quantityInCart}/{activeStock}
+                            </p>
+                        )}
+                        <Button
+                            type="button"
+                            size="lg"
+                            className="w-full rounded-xl sm:w-auto sm:px-4"
+                            disabled={!canAdd}
+                            onClick={handleAdd}
+                        >
+                            <Plus className="size-5" />
+                            {atStockLimit ? 'Máximo en carrito' : 'Agregar'}
+                        </Button>
+                    </div>
                 )}
             </CardContent>
         </Card>

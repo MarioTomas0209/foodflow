@@ -82,6 +82,7 @@ export interface CartItem {
     variantName: string | null;
     price: number;
     quantity: number;
+    maxStock: number | null;
 }
 
 export interface Cart {
@@ -108,6 +109,7 @@ export interface Order {
     delivery_city: string | null;
     latitude: number | null;
     longitude: number | null;
+    delivery_maps_url: string | null;
     status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
     payment_method: 'cash' | 'transfer';
     subtotal: string;

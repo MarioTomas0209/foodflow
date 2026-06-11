@@ -7,6 +7,7 @@ import { ProductCard } from '@/components/storefront/ProductCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/hooks/use-cart';
+import { validateCartAgainstCatalog } from '@/lib/cart-stock';
 import { saveCartForCheckout } from '@/lib/cart-storage';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
@@ -19,10 +20,19 @@ interface StorefrontProps {
 
 export default function Storefront({ organization, categories }: StorefrontProps) {
     const [cartOpen, setCartOpen] = useState(false);
+    const [stockMessage, setStockMessage] = useState<string | null>(null);
     const cart = useCart(organization.id);
     const namedRoute = useNamedRoute();
 
     const handleCheckout = () => {
+        const validationError = validateCartAgainstCatalog(cart.items, categories);
+
+        if (validationError) {
+            setStockMessage(validationError);
+            return;
+        }
+
+        setStockMessage(null);
         saveCartForCheckout({
             organizationId: organization.id,
             organizationSlug: organization.slug,
@@ -30,6 +40,18 @@ export default function Storefront({ organization, categories }: StorefrontProps
         });
         setCartOpen(false);
         router.visit(namedRoute('storefront.checkout', organization.slug));
+    };
+
+    const handleIncrement = (productId: string, variantId: string | null) => {
+        const incremented = cart.incrementItem(productId, variantId);
+
+        if (!incremented) {
+            setStockMessage('Ya agregaste el máximo disponible de ese producto.');
+        } else {
+            setStockMessage(null);
+        }
+
+        return incremented;
     };
 
     return (
@@ -70,7 +92,11 @@ export default function Storefront({ organization, categories }: StorefrontProps
                             <ul className="flex flex-col gap-3">
                                 {category.products.map((product) => (
                                     <li key={product.id}>
-                                        <ProductCard product={product} onAdd={cart.addItem} />
+                                        <ProductCard
+                                            product={product}
+                                            getQuantityInCart={cart.getQuantity}
+                                            onAdd={cart.addItem}
+                                        />
                                     </li>
                                 ))}
                             </ul>
@@ -100,7 +126,8 @@ export default function Storefront({ organization, categories }: StorefrontProps
                 items={cart.items}
                 subtotal={cart.subtotal}
                 isEmpty={cart.isEmpty}
-                onIncrement={cart.incrementItem}
+                stockMessage={stockMessage}
+                onIncrement={handleIncrement}
                 onDecrement={cart.decrementItem}
                 onRemove={cart.removeItem}
                 onCheckout={handleCheckout}

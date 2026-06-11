@@ -229,13 +229,13 @@ test('order store rejects insufficient stock', function () {
     ])->assertSessionHasErrors('items.0.quantity');
 });
 
-test('delivery orders require coordinates', function () {
+test('delivery orders require a valid delivery zone', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
         'owner_id' => $user->id,
-        'name' => 'Sin ubicación',
-        'slug' => 'sin-ubicacion',
+        'name' => 'Sin zona',
+        'slug' => 'sin-zona',
         'status' => 'active',
     ]);
 
@@ -271,7 +271,217 @@ test('delivery orders require coordinates', function () {
                 'quantity' => 1,
             ],
         ],
-    ])->assertSessionHasErrors(['latitude', 'longitude']);
+    ])->assertSessionHasErrors('delivery_address');
+});
+
+test('delivery orders accept manual zone selection without coordinates', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Zona manual',
+        'slug' => 'zona-manual',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco',
+        'price' => 25,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $zone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 20,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Carlos',
+        'customer_phone' => '5511445566',
+        'type' => 'delivery',
+        'delivery_address' => 'Calle 5',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+        'zone_id' => $zone->id,
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $this->assertDatabaseHas('orders', [
+        'customer_name' => 'Carlos',
+        'delivery_zone_id' => $zone->id,
+        'delivery_fee' => '20.00',
+        'total' => '45.00',
+        'latitude' => null,
+        'longitude' => null,
+    ]);
+});
+
+test('delivery orders store the pasted google maps share link', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Maps URL',
+        'slug' => 'maps-url',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco',
+        'price' => 25,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $zone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 20,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $mapsUrl = 'https://maps.app.goo.gl/MpqTqd8Hd2ADujCk7';
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Rosa',
+        'customer_phone' => '5511667788',
+        'type' => 'delivery',
+        'delivery_address' => 'Calle 8',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+        'latitude' => 16.2520,
+        'longitude' => -92.1350,
+        'delivery_maps_url' => $mapsUrl,
+        'zone_id' => $zone->id,
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $this->assertDatabaseHas('orders', [
+        'customer_name' => 'Rosa',
+        'delivery_maps_url' => $mapsUrl,
+        'delivery_zone_id' => $zone->id,
+    ]);
+});
+
+test('delivery orders prefer coordinates over manual zone when both are provided', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Prioridad GPS',
+        'slug' => 'prioridad-gps',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Burrito',
+        'price' => 50,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $gpsZone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 30,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $otherZone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Norte',
+        'fee' => 50,
+        'center_lat' => 16.3000,
+        'center_lng' => -92.1350,
+        'radius_km' => 5,
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Elena',
+        'customer_phone' => '5511556677',
+        'type' => 'delivery',
+        'delivery_address' => 'Calle 10',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+        'latitude' => 16.2520,
+        'longitude' => -92.1350,
+        'zone_id' => $otherZone->id,
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $this->assertDatabaseHas('orders', [
+        'customer_name' => 'Elena',
+        'delivery_zone_id' => $gpsZone->id,
+        'delivery_fee' => '30.00',
+    ]);
 });
 
 test('delivery orders reject addresses outside coverage zones', function () {

@@ -24,6 +24,7 @@ class Order extends Model
         'delivery_city',
         'latitude',
         'longitude',
+        'delivery_maps_url',
         'delivery_zone_id',
         'status',
         'payment_method',

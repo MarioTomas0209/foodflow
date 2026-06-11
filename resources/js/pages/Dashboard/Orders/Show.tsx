@@ -1,11 +1,12 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, MapPin } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, MapPin } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/lib/format-currency';
-import { buildMapsUrl } from '@/lib/maps';
+import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import {
     ORDER_STATUS_LABELS,
     ORDER_STATUSES,
@@ -22,6 +23,20 @@ interface OrderShowProps {
 }
 
 export default function Show({ order }: OrderShowProps) {
+    const [mapsUrlCopied, setMapsUrlCopied] = useState(false);
+
+    const deliveryMapsUrl = useMemo(() => getOrderDeliveryMapsUrl(order), [order]);
+
+    const copyDeliveryMapsUrl = async () => {
+        if (!deliveryMapsUrl) {
+            return;
+        }
+
+        await navigator.clipboard.writeText(deliveryMapsUrl);
+        setMapsUrlCopied(true);
+        setTimeout(() => setMapsUrlCopied(false), 2000);
+    };
+
     const updateStatus = (status: Order['status']) => {
         router.patch(
             route('dashboard.orders.update-status', order.id),
@@ -86,16 +101,31 @@ export default function Show({ order }: OrderShowProps) {
                                 <span className="text-muted-foreground">Dirección:</span> {order.delivery_address},{' '}
                                 {order.delivery_city}
                             </p>
-                            {order.latitude !== null && order.longitude !== null && (
-                                <a
-                                    href={buildMapsUrl(order.latitude, order.longitude)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
-                                >
-                                    <MapPin className="size-4" />
-                                    Ver ubicación en Google Maps
-                                </a>
+                            {deliveryMapsUrl && (
+                                <div className="bg-muted/40 space-y-3 rounded-lg border p-3">
+                                    <p className="font-medium">Ubicación para el repartidor</p>
+                                    <p className="text-muted-foreground text-xs">
+                                        Enlace que el cliente compartió desde Google Maps.
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button asChild variant="outline" size="sm">
+                                            <a
+                                                href={deliveryMapsUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <MapPin className="size-4" />
+                                                Abrir en Google Maps
+                                                <ExternalLink className="size-4" />
+                                            </a>
+                                        </Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={copyDeliveryMapsUrl}>
+                                            <Copy className="size-4" />
+                                            {mapsUrlCopied ? '¡Copiado!' : 'Copiar enlace'}
+                                        </Button>
+                                    </div>
+                                    <p className="text-muted-foreground break-all text-xs">{deliveryMapsUrl}</p>
+                                </div>
                             )}
                         </>
                     )}
