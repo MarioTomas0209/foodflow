@@ -8,6 +8,19 @@ export interface Organization {
     logo: string | null;
 }
 
+export interface DashboardOrganization {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    logo: string | null;
+}
+
 export interface PublicOrganization {
     id: string;
     name: string;

@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutDashboard, Menu, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,12 @@ const navItems: NavItem[] = [
         href: route('dashboard.menu.index'),
         icon: UtensilsCrossed,
         isActive: (url) => url.startsWith('/dashboard/menu'),
+    },
+    {
+        title: 'Configuración',
+        href: route('dashboard.settings'),
+        icon: Settings,
+        isActive: (url) => url.startsWith('/dashboard/settings'),
     },
 ];
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\MenuController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
+use App\Http\Controllers\Dashboard\OrganizationController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
@@ -34,6 +35,8 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::get('/orders', [DashboardOrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [DashboardOrderController::class, 'show'])->name('orders.show');
     Route::patch('/orders/{order}/status', [DashboardOrderController::class, 'updateStatus'])->name('orders.update-status');
+    Route::get('/settings', [OrganizationController::class, 'edit'])->name('settings');
+    Route::post('/settings', [OrganizationController::class, 'update'])->name('settings.update');
 });
 
 Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');

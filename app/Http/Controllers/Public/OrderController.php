@@ -26,15 +26,16 @@ class OrderController extends Controller
             ->firstOrFail();
 
         return Inertia::render('Public/Checkout', [
-            'organization' => $organization->only([
+            'organization' => array_merge($organization->only([
                 'id',
                 'name',
                 'slug',
                 'description',
                 'phone',
-                'logo',
                 'address',
                 'city',
+            ]), [
+                'logo' => $organization->logoPublicUrl(),
             ]),
         ]);
     }
@@ -245,14 +246,15 @@ class OrderController extends Controller
                     'subtotal',
                 ])),
             ],
-            'organization' => $order->organization->only([
+            'organization' => array_merge($order->organization->only([
                 'id',
                 'name',
                 'slug',
                 'phone',
-                'logo',
                 'address',
                 'city',
+            ]), [
+                'logo' => $order->organization->logoPublicUrl(),
             ]),
         ]);
     }

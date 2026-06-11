@@ -43,15 +43,16 @@ class StorefrontController extends Controller
             ->get();
 
         return Inertia::render('Public/Storefront', [
-            'organization' => $organization->only([
+            'organization' => array_merge($organization->only([
                 'id',
                 'name',
                 'slug',
                 'description',
                 'phone',
-                'logo',
                 'address',
                 'city',
+            ]), [
+                'logo' => $organization->logoPublicUrl(),
             ]),
             'categories' => $categories,
         ]);

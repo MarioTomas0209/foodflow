@@ -39,7 +39,7 @@ class SetOrganizationContext
             'id'   => $organization->id,
             'name' => $organization->name,
             'slug' => $organization->slug,
-            'logo' => $organization->logo,
+            'logo' => $organization->logoPublicUrl(),
         ]);
 
         return $next($request);

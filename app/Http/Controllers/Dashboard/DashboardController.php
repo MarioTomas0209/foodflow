@@ -19,7 +19,7 @@ class DashboardController extends Controller
                 'id' => $organization->id,
                 'name' => $organization->name,
                 'slug' => $organization->slug,
-                'logo' => $organization->logo,
+                'logo' => $organization->logoPublicUrl(),
             ],
             'stats' => [
                 'orders_today' => (clone $ordersToday)->count(),
