@@ -1,5 +1,5 @@
-import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
-import { FormEventHandler } from 'react';
+import { ImagePlus, LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { FormEventHandler, useMemo, useRef } from 'react';
 
 import InputError from '@/components/input-error';
 import { FormTextarea } from '@/components/menu/form-textarea';
@@ -22,10 +22,15 @@ interface ProductFormDialogProps {
         stock: string;
         has_variants: boolean;
         variants: ProductVariantInput[];
+        image: File | null;
     };
+    currentImageUrl: string | null;
     setData: (key: 'name' | 'description' | 'price' | 'stock', value: string) => void;
+    onImageChange: (file: File | null) => void;
     processing: boolean;
-    errors: Partial<Record<'name' | 'description' | 'price' | 'stock' | 'category_id' | 'variants', string>>;
+    errors: Partial<
+        Record<'name' | 'description' | 'price' | 'stock' | 'category_id' | 'variants' | 'image', string>
+    >;
     variantError: string | null;
     onSetHasVariants: (hasVariants: boolean) => void;
     onAddVariant: () => void;
@@ -41,7 +46,9 @@ export function ProductFormDialog({
     onOpenChange,
     categoryName,
     data,
+    currentImageUrl,
     setData,
+    onImageChange,
     processing,
     errors,
     variantError,
@@ -52,9 +59,18 @@ export function ProductFormDialog({
     onSubmit,
     onClose,
 }: ProductFormDialogProps) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const isEdit = mode === 'edit';
     const hiddenServerError =
         !data.has_variants && errors.variants ? errors.variants : null;
+
+    const imagePreview = useMemo(() => {
+        if (data.image) {
+            return URL.createObjectURL(data.image);
+        }
+
+        return currentImageUrl ?? null;
+    }, [data.image, currentImageUrl]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,6 +87,44 @@ export function ProductFormDialog({
                 </DialogHeader>
 
                 <form onSubmit={onSubmit} className="flex flex-col gap-4">
+                    <div className="grid gap-2">
+                        <Label>Imagen del producto</Label>
+                        <div className="flex items-center gap-4">
+                            {imagePreview ? (
+                                <img
+                                    src={imagePreview}
+                                    alt="Vista previa"
+                                    className="size-20 rounded-xl border object-cover"
+                                />
+                            ) : (
+                                <div className="bg-muted text-muted-foreground flex size-20 items-center justify-center rounded-xl border">
+                                    <ImagePlus className="size-8" strokeWidth={1.5} />
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-2">
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="hidden"
+                                    onChange={(e) => onImageChange(e.target.files?.[0] ?? null)}
+                                    disabled={processing}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={processing}
+                                >
+                                    {imagePreview ? 'Cambiar imagen' : 'Subir imagen'}
+                                </Button>
+                                <p className="text-muted-foreground text-xs">JPG, PNG o WebP. Máx 2 MB.</p>
+                            </div>
+                        </div>
+                        <InputError message={errors.image} />
+                    </div>
+
                     <div className="grid gap-2">
                         <Label htmlFor="product-name">Nombre</Label>
                         <Input

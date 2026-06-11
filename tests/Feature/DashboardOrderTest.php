@@ -73,6 +73,40 @@ function createOrderForOrganization(Organization $organization, array $overrides
     return $order->fresh(['items']);
 }
 
+test('orders index includes resolved product images on items', function () {
+    [$user, $organization] = createDashboardUser();
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco al pastor',
+        'price' => 30,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+        'image' => 'products/'.$organization->id.'/taco.jpg',
+    ]);
+
+    $order = createOrderForOrganization($organization);
+    $order->items()->update(['product_id' => $product->id, 'product_name' => $product->name]);
+
+    $expectedUrl = $product->imagePublicUrl();
+
+    $this->actingAs($user)
+        ->get(route('dashboard.orders.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.items.0.product_image', $expectedUrl)
+        );
+});
+
 test('authenticated users can view todays orders index', function () {
     [$user, $organization] = createDashboardUser();
     createOrderForOrganization($organization);

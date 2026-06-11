@@ -16,6 +16,7 @@ import {
     orderStatusBadgeClass,
 } from '@/lib/order-status';
 import DashboardLayout from '@/layouts/DashboardLayout';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type Order } from '@/types';
 
 interface OrderShowProps {
@@ -143,17 +144,26 @@ export default function Show({ order }: OrderShowProps) {
                     <h2 className="font-semibold">Productos</h2>
                     <ul className="space-y-3">
                         {order.items.map((item) => (
-                            <li key={item.id} className="flex items-start justify-between gap-3 text-sm">
-                                <div>
-                                    <p className="font-medium">{item.product_name}</p>
-                                    {item.variant_name && (
-                                        <p className="text-muted-foreground">{item.variant_name}</p>
-                                    )}
-                                    <p className="text-muted-foreground">
-                                        {item.quantity} × {formatCurrency(item.unit_price)}
-                                    </p>
+                            <li key={item.id} className="flex items-start gap-3 text-sm">
+                                <ProductThumbnail
+                                    image={item.product_image}
+                                    name={item.product_name}
+                                    className="size-12"
+                                />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-medium">{item.product_name}</p>
+                                            {item.variant_name && (
+                                                <p className="text-muted-foreground">{item.variant_name}</p>
+                                            )}
+                                            <p className="text-muted-foreground">
+                                                {item.quantity} × {formatCurrency(item.unit_price)}
+                                            </p>
+                                        </div>
+                                        <span className="font-medium tabular-nums">{formatCurrency(item.subtotal)}</span>
+                                    </div>
                                 </div>
-                                <span className="font-medium tabular-nums">{formatCurrency(item.subtotal)}</span>
                             </li>
                         ))}
                     </ul>

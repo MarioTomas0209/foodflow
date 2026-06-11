@@ -40,7 +40,12 @@ class StorefrontController extends Controller
                     ->orderBy('sort_order'),
             ])
             ->orderBy('sort_order')
-            ->get();
+            ->get()
+            ->each(function ($category) {
+                $category->products->each(function ($product) {
+                    $product->setAttribute('image', $product->imagePublicUrl());
+                });
+            });
 
         return Inertia::render('Public/Storefront', [
             'organization' => array_merge($organization->only([

@@ -36,7 +36,7 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
     Route::post('/menu/categories', [MenuController::class, 'storeCategory'])->name('menu.categories.store');
     Route::post('/menu/products', [MenuController::class, 'storeProduct'])->name('menu.products.store');
-    Route::put('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
+    Route::post('/menu/products/{product}', [MenuController::class, 'updateProduct'])->name('menu.products.update');
     Route::get('/orders', [DashboardOrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [DashboardOrderController::class, 'show'])->name('orders.show');
     Route::patch('/orders/{order}/status', [DashboardOrderController::class, 'updateStatus'])->name('orders.update-status');

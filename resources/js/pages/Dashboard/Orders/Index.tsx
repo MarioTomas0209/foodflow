@@ -4,6 +4,7 @@ import { Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { formatCurrency } from '@/lib/format-currency';
 import {
     ORDER_STATUS_LABELS,
@@ -131,6 +132,23 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                                             {ORDER_TYPE_LABELS[order.type]} · {order.items.length}{' '}
                                             {order.items.length === 1 ? 'producto' : 'productos'}
                                         </p>
+                                        {order.items.length > 0 && (
+                                            <div className="flex items-center gap-1.5 pt-2">
+                                                {order.items.slice(0, 4).map((item) => (
+                                                    <ProductThumbnail
+                                                        key={item.id}
+                                                        image={item.product_image}
+                                                        name={item.product_name}
+                                                        className="size-9"
+                                                    />
+                                                ))}
+                                                {order.items.length > 4 && (
+                                                    <span className="text-muted-foreground pl-1 text-xs font-medium">
+                                                        +{order.items.length - 4}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="shrink-0 text-right">
                                         <p className="font-semibold tabular-nums">{formatCurrency(order.total)}</p>

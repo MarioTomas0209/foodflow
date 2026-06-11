@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Support\OrderItemImageResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -59,8 +60,14 @@ class OrderController extends Controller
             $query->where('type', $type);
         }
 
+        $orders = $query->paginate(20)->withQueryString();
+
+        $orders->getCollection()->each(function (Order $order) {
+            OrderItemImageResolver::resolve($order->items);
+        });
+
         return Inertia::render('Dashboard/Orders/Index', [
-            'orders' => $query->paginate(20)->withQueryString(),
+            'orders' => $orders,
             'filters' => [
                 'status' => $status,
                 'type' => $type,
@@ -74,6 +81,7 @@ class OrderController extends Controller
         abort_unless($order->organization_id === auth()->user()->currentOrganization->id, 403);
 
         $order->load('items');
+        OrderItemImageResolver::resolve($order->items);
 
         return Inertia::render('Dashboard/Orders/Show', [
             'order' => $order,

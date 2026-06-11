@@ -78,6 +78,7 @@ export interface Category {
 export interface CartItem {
     productId: string;
     productName: string;
+    productImage: string | null;
     variantId: string | null;
     variantName: string | null;
     price: number;
@@ -94,6 +95,7 @@ export interface OrderItem {
     id: string;
     product_name: string;
     variant_name: string | null;
+    product_image: string | null;
     unit_price: string;
     quantity: number;
     subtotal: string;

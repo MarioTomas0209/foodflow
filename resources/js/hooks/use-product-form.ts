@@ -27,7 +27,8 @@ export interface ProductFormData {
     is_active: boolean;
     has_variants: boolean;
     variants: ProductVariantInput[];
-    [key: string]: string | boolean | ProductVariantInput[];
+    image: File | null;
+    [key: string]: string | boolean | ProductVariantInput[] | File | null;
 }
 
 const initialFormData: ProductFormData = {
@@ -39,6 +40,7 @@ const initialFormData: ProductFormData = {
     is_active: true,
     has_variants: false,
     variants: [],
+    image: null,
 };
 
 const initialModalState: ProductModalState = {
@@ -71,33 +73,44 @@ function validateVariants(data: ProductFormData): string | null {
 export function useProductForm() {
     const [modal, setModal] = useState<ProductModalState>(initialModalState);
     const [variantError, setVariantError] = useState<string | null>(null);
+    const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
     const namedRoute = useNamedRoute();
 
     const form = useForm<ProductFormData>(initialFormData);
-    const { data, setData, post, put, processing, errors, reset, clearErrors, transform } = form;
+    const { data, setData, post, processing, errors, reset, clearErrors, transform } = form;
 
     const close = useCallback(() => {
         setModal(initialModalState);
         setVariantError(null);
+        setCurrentImageUrl(null);
         reset();
     }, [reset]);
 
-    transform((formData) => ({
-        ...formData,
-        price: formData.has_variants ? '0' : formData.price,
-        stock: formData.has_variants || formData.stock === '' ? null : Number(formData.stock),
-        variants: formData.has_variants
-            ? formData.variants.map((variant) => ({
-                  name: variant.name,
-                  price: variant.price,
-                  stock: variant.stock === '' ? null : Number(variant.stock),
-              }))
-            : [],
-    }));
+    transform((formData) => {
+        const transformed: Record<string, unknown> = {
+            ...formData,
+            price: formData.has_variants ? '0' : formData.price,
+            stock: formData.has_variants || formData.stock === '' ? null : Number(formData.stock),
+            variants: formData.has_variants
+                ? formData.variants.map((variant) => ({
+                      name: variant.name,
+                      price: variant.price,
+                      stock: variant.stock === '' ? null : Number(variant.stock),
+                  }))
+                : [],
+        };
+
+        if (!formData.image) {
+            delete transformed.image;
+        }
+
+        return transformed;
+    });
 
     const openForCategory = (categoryId: string) => {
         reset();
         setVariantError(null);
+        setCurrentImageUrl(null);
         setModal({ open: true, mode: 'create', categoryId, productId: null });
         setData({ ...initialFormData, category_id: categoryId });
     };
@@ -105,6 +118,7 @@ export function useProductForm() {
     const openForEdit = (product: Product) => {
         reset();
         setVariantError(null);
+        setCurrentImageUrl(product.image ?? null);
         setModal({
             open: true,
             mode: 'edit',
@@ -126,6 +140,7 @@ export function useProductForm() {
                       stock: variant.stock !== null ? String(variant.stock) : '',
                   }))
                 : [],
+            image: null,
         });
     };
 
@@ -135,6 +150,10 @@ export function useProductForm() {
         } else {
             close();
         }
+    };
+
+    const setImage = (file: File | null) => {
+        setData('image', file);
     };
 
     const setHasVariants = (hasVariants: boolean) => {
@@ -190,13 +209,15 @@ export function useProductForm() {
 
         setVariantError(null);
 
+        const hasImage = data.image !== null;
         const requestOptions = {
             preserveScroll: true,
+            ...(hasImage ? { forceFormData: true } : {}),
             onSuccess: () => close(),
         };
 
         if (modal.mode === 'edit' && modal.productId) {
-            put(namedRoute('dashboard.menu.products.update', modal.productId), requestOptions);
+            post(namedRoute('dashboard.menu.products.update', modal.productId), requestOptions);
             return;
         }
 
@@ -217,6 +238,8 @@ export function useProductForm() {
         processing,
         errors,
         variantError,
+        currentImageUrl,
+        setImage,
         setHasVariants,
         addVariant,
         removeVariant,

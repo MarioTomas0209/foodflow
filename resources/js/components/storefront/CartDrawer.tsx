@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import { formatCurrency } from '@/lib/format-currency';
 import { type CartItem } from '@/types';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 
 interface CartDrawerProps {
     open: boolean;
@@ -63,29 +64,38 @@ export function CartDrawer({
                                     key={`${item.productId}:${item.variantId ?? 'base'}`}
                                     className="flex flex-col gap-3"
                                 >
-                                    <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-start gap-3">
+                                        <ProductThumbnail
+                                            image={item.productImage}
+                                            name={item.productName}
+                                            className="size-14 rounded-xl"
+                                        />
                                         <div className="min-w-0 flex-1">
-                                            <p className="font-medium">{item.productName}</p>
-                                            {item.variantName && (
-                                                <p className="text-muted-foreground text-sm">{item.variantName}</p>
-                                            )}
-                                            <p className="text-muted-foreground mt-1 text-sm tabular-nums">
-                                                {formatCurrency(item.price)} c/u
-                                                {item.maxStock !== null && (
-                                                    <span className="ml-2">· máx. {item.maxStock}</span>
-                                                )}
-                                            </p>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-medium">{item.productName}</p>
+                                                    {item.variantName && (
+                                                        <p className="text-muted-foreground text-sm">{item.variantName}</p>
+                                                    )}
+                                                    <p className="text-muted-foreground mt-1 text-sm tabular-nums">
+                                                        {formatCurrency(item.price)} c/u
+                                                        {item.maxStock !== null && (
+                                                            <span className="ml-2">· máx. {item.maxStock}</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-muted-foreground hover:text-destructive shrink-0"
+                                                    onClick={() => onRemove(item.productId, item.variantId)}
+                                                    aria-label={`Eliminar ${item.productName}`}
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                </Button>
+                                            </div>
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-muted-foreground hover:text-destructive shrink-0"
-                                            onClick={() => onRemove(item.productId, item.variantId)}
-                                            aria-label={`Eliminar ${item.productName}`}
-                                        >
-                                            <Trash2 className="size-4" />
-                                        </Button>
                                     </div>
 
                                     <div className="flex items-center justify-between gap-3">

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type Category, type Product } from '@/types';
 
 interface CategoryCardProps {
@@ -43,41 +44,52 @@ export function CategoryCard({ category, onAddProduct, onEditProduct }: Category
                 ) : (
                     <ul className="divide-border divide-y">
                         {category.products.map((product) => (
-                            <li key={product.id} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                            <li key={product.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                                <ProductThumbnail
+                                    image={product.image}
+                                    name={product.name}
+                                    className="size-12"
+                                />
                                 <div className="min-w-0 flex-1">
-                                    <p className="font-medium">{product.name}</p>
-                                    {product.description && (
-                                        <p className="text-muted-foreground text-sm">{product.description}</p>
-                                    )}
-                                    {product.has_variants && product.variants.length > 0 && (
-                                        <ul className="mt-2 space-y-1">
-                                            {product.variants.map((variant) => (
-                                                <li
-                                                    key={variant.id}
-                                                    className="text-muted-foreground flex items-center justify-between gap-4 text-sm"
-                                                >
-                                                    <span>{variant.name}</span>
-                                                    <span className="font-medium">{formatCurrency(variant.price)}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                    {!product.has_variants && (
-                                        <span className="text-muted-foreground text-sm font-medium">
-                                            {formatCurrency(product.price)}
-                                        </span>
-                                    )}
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-8"
-                                        onClick={() => onEditProduct(product)}
-                                        aria-label={`Editar ${product.name}`}
-                                    >
-                                        <Pencil className="size-4" />
-                                    </Button>
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium">{product.name}</p>
+                                            {product.description && (
+                                                <p className="text-muted-foreground text-sm">{product.description}</p>
+                                            )}
+                                            {product.has_variants && product.variants.length > 0 && (
+                                                <ul className="mt-2 space-y-1">
+                                                    {product.variants.map((variant) => (
+                                                        <li
+                                                            key={variant.id}
+                                                            className="text-muted-foreground flex items-center justify-between gap-4 text-sm"
+                                                        >
+                                                            <span>{variant.name}</span>
+                                                            <span className="font-medium">
+                                                                {formatCurrency(variant.price)}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            {!product.has_variants && (
+                                                <span className="text-muted-foreground text-sm font-medium">
+                                                    {formatCurrency(product.price)}
+                                                </span>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="size-8"
+                                                onClick={() => onEditProduct(product)}
+                                                aria-label={`Editar ${product.name}`}
+                                            >
+                                                <Pencil className="size-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             </li>
                         ))}

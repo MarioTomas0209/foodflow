@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -20,7 +21,12 @@ class MenuController extends Controller
             ->categories()
             ->with(['products' => fn ($query) => $query->with('variants')->orderBy('sort_order')])
             ->orderBy('sort_order')
-            ->get();
+            ->get()
+            ->each(function ($category) {
+                $category->products->each(function ($product) {
+                    $product->setAttribute('image', $product->imagePublicUrl());
+                });
+            });
 
         return Inertia::render('Dashboard/Menu/Index', [
             'categories' => $categories,
@@ -51,6 +57,15 @@ class MenuController extends Controller
         $organization = auth()->user()->currentOrganization;
         $validated = $this->validateProduct($request, $organization);
 
+        $imagePath = null;
+
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store(
+                "products/{$organization->id}",
+                'public',
+            );
+        }
+
         $product = $organization->products()->create([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
@@ -59,6 +74,7 @@ class MenuController extends Controller
             'stock' => $validated['has_variants'] ? null : ($validated['stock'] ?? null),
             'category_id' => $validated['category_id'],
             'is_active' => $validated['is_active'] ?? true,
+            'image' => $imagePath,
         ]);
 
         $this->syncProductVariants($product, $validated);
@@ -74,7 +90,7 @@ class MenuController extends Controller
 
         $validated = $this->validateProduct($request, $organization);
 
-        $product->update([
+        $payload = [
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'price' => $validated['has_variants'] ? 0 : $validated['price'],
@@ -82,7 +98,18 @@ class MenuController extends Controller
             'stock' => $validated['has_variants'] ? null : ($validated['stock'] ?? null),
             'category_id' => $validated['category_id'],
             'is_active' => $validated['is_active'] ?? true,
-        ]);
+        ];
+
+        if ($request->hasFile('image')) {
+            $this->deleteStoredProductImage($product->image);
+
+            $payload['image'] = $request->file('image')->store(
+                "products/{$product->organization_id}",
+                'public',
+            );
+        }
+
+        $product->update($payload);
 
         $this->syncProductVariants($product, $validated);
 
@@ -136,6 +163,7 @@ class MenuController extends Controller
                 Rule::exists('categories', 'id')->where('organization_id', $organization->id),
             ],
             'is_active' => ['nullable', 'boolean'],
+            'image' => ['nullable', 'image', 'max:2048', 'mimes:jpg,jpeg,png,webp'],
         ]) + ['has_variants' => $hasVariants];
     }
 
@@ -156,5 +184,14 @@ class MenuController extends Controller
                 ])->all()
             );
         }
+    }
+
+    private function deleteStoredProductImage(?string $image): void
+    {
+        if ($image === null || str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
+            return;
+        }
+
+        Storage::disk('public')->delete($image);
     }
 }

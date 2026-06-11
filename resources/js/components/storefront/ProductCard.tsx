@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { stockLimitMessage } from '@/lib/cart-stock';
 import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
@@ -43,6 +43,8 @@ export function ProductCard({ product, getQuantityInCart, onAdd }: ProductCardPr
         : product.stock;
     const atStockLimit = activeStock !== null && quantityInCart >= activeStock;
 
+    const displayPrice = product.has_variants && selectedVariant ? selectedVariant.price : product.price;
+
     const canAdd = useMemo(() => {
         if (product.has_variants) {
             return selectedVariant !== undefined && isInStock(selectedVariant.stock) && !atStockLimit;
@@ -69,90 +71,97 @@ export function ProductCard({ product, getQuantityInCart, onAdd }: ProductCardPr
     };
 
     return (
-        <Card className={cn('overflow-hidden py-0', isSoldOut && 'opacity-90')}>
-            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1 space-y-3">
-                    <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                            <h3 className="text-base font-semibold">{product.name}</h3>
-                            {product.description && (
-                                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{product.description}</p>
-                            )}
-                        </div>
-                        {isSoldOut && (
-                            <Badge variant="secondary" className="shrink-0">
-                                Agotado
-                            </Badge>
-                        )}
+        <Card className={cn('flex h-full flex-col overflow-hidden py-0', isSoldOut && 'opacity-90')}>
+            <div className="relative aspect-[4/3] w-full shrink-0">
+                {product.image ? (
+                    <img src={product.image} alt={product.name} className="size-full object-cover" />
+                ) : (
+                    <div className="bg-muted flex size-full items-center justify-center">
+                        <span className="text-muted-foreground text-5xl font-semibold">
+                            {product.name.charAt(0).toUpperCase()}
+                        </span>
                     </div>
+                )}
+                {isSoldOut && (
+                    <Badge variant="secondary" className="absolute top-3 right-3 shadow-sm">
+                        Agotado
+                    </Badge>
+                )}
+            </div>
 
-                    {product.has_variants && product.variants.length > 0 ? (
-                        <div className="space-y-2">
-                            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                                Elige una opción
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                {product.variants.map((variant) => {
-                                    const variantSoldOut = variant.stock === 0;
-
-                                    return (
-                                        <Button
-                                            key={variant.id}
-                                            type="button"
-                                            variant={selectedVariantId === variant.id ? 'default' : 'outline'}
-                                            size="sm"
-                                            disabled={variantSoldOut}
-                                            className={cn(
-                                                'h-auto rounded-full px-3 py-2',
-                                                variantSoldOut && 'opacity-60',
-                                            )}
-                                            onClick={() => {
-                                                setSelectedVariantId(variant.id);
-                                                setLimitMessage(null);
-                                            }}
-                                        >
-                                            <span>{variant.name}</span>
-                                            <span className="ml-2 font-semibold tabular-nums">
-                                                {formatCurrency(variant.price)}
-                                            </span>
-                                            {variantSoldOut && (
-                                                <span className="text-muted-foreground ml-2 text-xs">Agotado</span>
-                                            )}
-                                        </Button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-lg font-semibold tabular-nums">{formatCurrency(product.price)}</p>
+            <div className="flex flex-1 flex-col gap-3 p-4">
+                <div className="min-w-0 flex-1 space-y-1">
+                    <h3 className="text-base leading-snug font-semibold">{product.name}</h3>
+                    {product.description && (
+                        <p className="text-muted-foreground line-clamp-2 text-sm leading-relaxed">
+                            {product.description}
+                        </p>
+                    )}
+                    {!product.has_variants && (
+                        <p className="pt-1 text-lg font-semibold tabular-nums">{formatCurrency(product.price)}</p>
                     )}
                 </div>
 
-                {isSoldOut ? (
-                    <div className="text-muted-foreground flex h-11 w-full shrink-0 items-center justify-center rounded-xl border border-dashed text-sm font-medium sm:w-32">
-                        Agotado
-                    </div>
-                ) : (
-                    <div className="flex w-full shrink-0 flex-col items-stretch gap-2 sm:w-auto">
-                        {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
-                        {quantityInCart > 0 && activeStock !== null && (
-                            <p className="text-muted-foreground text-xs">
-                                En tu pedido: {quantityInCart}/{activeStock}
-                            </p>
+                {product.has_variants && product.variants.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                            {product.variants.map((variant) => {
+                                const variantSoldOut = variant.stock === 0;
+
+                                return (
+                                    <Button
+                                        key={variant.id}
+                                        type="button"
+                                        variant={selectedVariantId === variant.id ? 'default' : 'outline'}
+                                        size="sm"
+                                        disabled={variantSoldOut}
+                                        className={cn(
+                                            'h-auto rounded-full px-2.5 py-1.5 text-xs',
+                                            variantSoldOut && 'opacity-60',
+                                        )}
+                                        onClick={() => {
+                                            setSelectedVariantId(variant.id);
+                                            setLimitMessage(null);
+                                        }}
+                                    >
+                                        <span>{variant.name}</span>
+                                        <span className="ml-1.5 font-semibold tabular-nums">
+                                            {formatCurrency(variant.price)}
+                                        </span>
+                                    </Button>
+                                );
+                            })}
+                        </div>
+                        {selectedVariant && (
+                            <p className="text-base font-semibold tabular-nums">{formatCurrency(displayPrice)}</p>
                         )}
+                    </div>
+                )}
+
+                <div className="mt-auto space-y-2">
+                    {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
+                    {quantityInCart > 0 && activeStock !== null && (
+                        <p className="text-muted-foreground text-xs">
+                            En tu pedido: {quantityInCart}/{activeStock}
+                        </p>
+                    )}
+                    {isSoldOut ? (
+                        <div className="text-muted-foreground flex h-10 w-full items-center justify-center rounded-xl border border-dashed text-sm font-medium">
+                            Agotado
+                        </div>
+                    ) : (
                         <Button
                             type="button"
-                            size="lg"
-                            className="w-full rounded-xl sm:w-auto sm:px-4"
+                            className="w-full rounded-xl"
                             disabled={!canAdd}
                             onClick={handleAdd}
                         >
-                            <Plus className="size-5" />
+                            <Plus className="size-4" />
                             {atStockLimit ? 'Máximo en carrito' : 'Agregar'}
                         </Button>
-                    </div>
-                )}
-            </CardContent>
+                    )}
+                </div>
+            </div>
         </Card>
     );
 }

@@ -8,6 +8,7 @@ import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import { buildWhatsAppUrl } from '@/lib/whatsapp';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type Order, type PublicOrganization } from '@/types';
 
 interface OrderConfirmationProps {
@@ -77,15 +78,24 @@ export default function OrderConfirmation({ order, organization }: OrderConfirma
 
                     <ul className="space-y-2">
                         {order.items.map((item) => (
-                            <li key={item.id} className="flex items-start justify-between gap-3 text-sm">
-                                <div>
-                                    <p className="font-medium">{item.product_name}</p>
-                                    {item.variant_name && (
-                                        <p className="text-muted-foreground">{item.variant_name}</p>
-                                    )}
-                                    <p className="text-muted-foreground">x{item.quantity}</p>
+                            <li key={item.id} className="flex items-start gap-3 text-sm">
+                                <ProductThumbnail
+                                    image={item.product_image}
+                                    name={item.product_name}
+                                    className="size-12"
+                                />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-medium">{item.product_name}</p>
+                                            {item.variant_name && (
+                                                <p className="text-muted-foreground">{item.variant_name}</p>
+                                            )}
+                                            <p className="text-muted-foreground">x{item.quantity}</p>
+                                        </div>
+                                        <span className="font-medium tabular-nums">{formatCurrency(item.subtotal)}</span>
+                                    </div>
                                 </div>
-                                <span className="font-medium tabular-nums">{formatCurrency(item.subtotal)}</span>
                             </li>
                         ))}
                     </ul>

@@ -1,8 +1,9 @@
 import { Head, router } from '@inertiajs/react';
 import { ShoppingCart } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { CartDrawer } from '@/components/storefront/CartDrawer';
+import { CategoryNav } from '@/components/storefront/CategoryNav';
 import { ProductCard } from '@/components/storefront/ProductCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,8 @@ import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
 import { type Category, type PublicOrganization } from '@/types';
 
+const SCROLL_OFFSET = 120;
+
 interface StorefrontProps {
     organization: PublicOrganization;
     categories: Category[];
@@ -21,8 +24,52 @@ interface StorefrontProps {
 export default function Storefront({ organization, categories }: StorefrontProps) {
     const [cartOpen, setCartOpen] = useState(false);
     const [stockMessage, setStockMessage] = useState<string | null>(null);
+    const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
     const cart = useCart(organization.id);
     const namedRoute = useNamedRoute();
+
+    const scrollToCategory = useCallback((id: string) => {
+        const el = document.getElementById(`category-${id}`);
+
+        if (!el) {
+            return;
+        }
+
+        setActiveCategoryId(id);
+
+        const top = el.getBoundingClientRect().top + window.scrollY - SCROLL_OFFSET;
+
+        window.scrollTo({ top, behavior: 'smooth' });
+    }, []);
+
+    useEffect(() => {
+        const observers: IntersectionObserver[] = [];
+
+        categories.forEach((category) => {
+            const el = document.getElementById(`category-${category.id}`);
+
+            if (!el) {
+                return;
+            }
+
+            const observer = new IntersectionObserver(
+                ([entry]) => {
+                    if (entry.isIntersecting) {
+                        setActiveCategoryId(category.id);
+                    }
+                },
+                {
+                    rootMargin: '-20% 0px -70% 0px',
+                    threshold: 0,
+                },
+            );
+
+            observer.observe(el);
+            observers.push(observer);
+        });
+
+        return () => observers.forEach((observer) => observer.disconnect());
+    }, [categories]);
 
     const handleCheckout = () => {
         const validationError = validateCartAgainstCatalog(cart.items, categories);
@@ -58,7 +105,7 @@ export default function Storefront({ organization, categories }: StorefrontProps
         <PublicLayout organization={organization}>
             <Head title={organization.name} />
 
-            <div className="flex flex-col gap-8 pb-24">
+            <div className="flex flex-col gap-6 pb-24">
                 {(organization.description || organization.phone) && (
                     <section className="space-y-2">
                         {organization.description && (
@@ -75,13 +122,27 @@ export default function Storefront({ organization, categories }: StorefrontProps
                     </section>
                 )}
 
+                {categories.length > 0 && (
+                    <div className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-[4.5rem] z-[9] -mx-4 border-b px-4 py-3 backdrop-blur">
+                        <CategoryNav
+                            categories={categories}
+                            activeCategoryId={activeCategoryId}
+                            onSelect={scrollToCategory}
+                        />
+                    </div>
+                )}
+
                 {categories.length === 0 ? (
                     <p className="text-muted-foreground py-12 text-center text-base">
                         Este menú aún no tiene productos disponibles.
                     </p>
                 ) : (
                     categories.map((category) => (
-                        <section key={category.id} className="space-y-4">
+                        <section
+                            key={category.id}
+                            id={`category-${category.id}`}
+                            className="scroll-mt-[7.5rem] space-y-4"
+                        >
                             <div>
                                 <h2 className="text-xl font-semibold">{category.name}</h2>
                                 {category.description && (
@@ -89,9 +150,9 @@ export default function Storefront({ organization, categories }: StorefrontProps
                                 )}
                             </div>
 
-                            <ul className="flex flex-col gap-3">
+                            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 {category.products.map((product) => (
-                                    <li key={product.id}>
+                                    <li key={product.id} className="min-h-0">
                                         <ProductCard
                                             product={product}
                                             getQuantityInCart={cart.getQuantity}

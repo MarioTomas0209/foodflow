@@ -60,6 +60,7 @@ export function useCart(organizationId: string) {
                 {
                     productId: product.id,
                     productName: product.name,
+                    productImage: product.image ?? null,
                     variantId,
                     variantName,
                     price,

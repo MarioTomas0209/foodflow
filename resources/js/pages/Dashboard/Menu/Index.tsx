@@ -59,7 +59,9 @@ export default function Index({ categories }: MenuPageProps) {
                 onOpenChange={productForm.setOpen}
                 categoryName={activeCategory?.name}
                 data={productForm.data}
+                currentImageUrl={productForm.currentImageUrl}
                 setData={productForm.setData}
+                onImageChange={productForm.setImage}
                 processing={productForm.processing}
                 errors={productForm.errors}
                 variantError={productForm.variantError}

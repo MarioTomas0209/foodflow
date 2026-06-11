@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
@@ -43,6 +44,19 @@ class Product extends Model
     public function isAvailable(): bool
     {
         return $this->stock === null || $this->stock > 0;
+    }
+
+    public function imagePublicUrl(): ?string
+    {
+        if ($this->image === null) {
+            return null;
+        }
+
+        if (str_starts_with($this->image, 'http://') || str_starts_with($this->image, 'https://')) {
+            return $this->image;
+        }
+
+        return Storage::disk('public')->url($this->image);
     }
 
     public function organization(): BelongsTo

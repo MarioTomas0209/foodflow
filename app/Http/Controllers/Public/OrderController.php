@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
 use App\Support\GoogleMapsUrlParser;
+use App\Support\OrderItemImageResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -226,6 +227,7 @@ class OrderController extends Controller
                 'product_variant_id' => $variantId,
                 'product_name' => $product->name,
                 'variant_name' => $variantName,
+                'product_image' => $product->imagePublicUrl(),
                 'unit_price' => $unitPrice,
                 'quantity' => $item['quantity'],
                 'subtotal' => $lineSubtotal,
@@ -294,6 +296,7 @@ class OrderController extends Controller
                     'product_variant_id' => $item['product_variant_id'],
                     'product_name' => $item['product_name'],
                     'variant_name' => $item['variant_name'],
+                    'product_image' => $item['product_image'],
                     'unit_price' => $item['unit_price'],
                     'quantity' => $item['quantity'],
                     'subtotal' => $item['subtotal'],
@@ -334,6 +337,7 @@ class OrderController extends Controller
     public function confirmation(Order $order): Response
     {
         $order->load(['items', 'organization']);
+        OrderItemImageResolver::resolve($order->items);
 
         return Inertia::render('Public/OrderConfirmation', [
             'order' => $order->only([
@@ -359,6 +363,7 @@ class OrderController extends Controller
                     'product_variant_id',
                     'product_name',
                     'variant_name',
+                    'product_image',
                     'unit_price',
                     'quantity',
                     'subtotal',

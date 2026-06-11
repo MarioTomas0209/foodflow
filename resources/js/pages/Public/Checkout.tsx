@@ -21,6 +21,7 @@ import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
 import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
 import PublicLayout from '@/layouts/PublicLayout';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type CartItem, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
 
 const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
@@ -812,18 +813,27 @@ export default function Checkout({ organization, zones, customer, addresses }: C
                             {cartItems.map((item) => (
                                 <li
                                     key={`${item.productId}:${item.variantId ?? 'base'}`}
-                                    className="flex items-start justify-between gap-3 text-sm"
+                                    className="flex items-start gap-3 text-sm"
                                 >
-                                    <div>
-                                        <p className="font-medium">{item.productName}</p>
-                                        {item.variantName && (
-                                            <p className="text-muted-foreground">{item.variantName}</p>
-                                        )}
-                                        <p className="text-muted-foreground">x{item.quantity}</p>
+                                    <ProductThumbnail
+                                        image={item.productImage}
+                                        name={item.productName}
+                                        className="size-12"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-medium">{item.productName}</p>
+                                                {item.variantName && (
+                                                    <p className="text-muted-foreground">{item.variantName}</p>
+                                                )}
+                                                <p className="text-muted-foreground">x{item.quantity}</p>
+                                            </div>
+                                            <span className="font-medium tabular-nums">
+                                                {formatCurrency(item.price * item.quantity)}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <span className="font-medium tabular-nums">
-                                        {formatCurrency(item.price * item.quantity)}
-                                    </span>
                                 </li>
                             ))}
                         </ul>
