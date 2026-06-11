@@ -16,6 +16,7 @@ class Order extends Model
      */
     protected $fillable = [
         'organization_id',
+        'customer_id',
         'customer_name',
         'customer_phone',
         'customer_notes',
@@ -50,6 +51,11 @@ class Order extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
     public function deliveryZone(): BelongsTo
