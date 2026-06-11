@@ -24,6 +24,7 @@ class Order extends Model
         'delivery_city',
         'latitude',
         'longitude',
+        'delivery_zone_id',
         'status',
         'payment_method',
         'subtotal',
@@ -48,6 +49,11 @@ class Order extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function deliveryZone(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryZone::class);
     }
 
     public function items(): HasMany

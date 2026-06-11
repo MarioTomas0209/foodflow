@@ -68,6 +68,20 @@ class Organization extends Model
         return $this->hasMany(Order::class);
     }
 
+    public function deliveryZones(): HasMany
+    {
+        return $this->hasMany(DeliveryZone::class)->orderBy('sort_order');
+    }
+
+    public function findDeliveryZoneFor(float $latitude, float $longitude): ?DeliveryZone
+    {
+        return $this->deliveryZones()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get()
+            ->first(fn (DeliveryZone $zone) => $zone->containsCoordinates($latitude, $longitude));
+    }
+
     public function logoPublicUrl(): ?string
     {
         if ($this->logo === null) {
