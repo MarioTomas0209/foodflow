@@ -1,6 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Package } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,6 +12,7 @@ import {
     ORDER_STATUSES,
     ORDER_TYPE_LABELS,
     formatOrderTime,
+    formatScheduledTime,
     orderStatusBadgeClass,
 } from '@/lib/order-status';
 import DashboardLayout from '@/layouts/DashboardLayout';
@@ -127,6 +129,11 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                                             >
                                                 {ORDER_STATUS_LABELS[order.status]}
                                             </span>
+                                            {order.is_preorder && order.scheduled_for && (
+                                                <Badge variant="outline" className="rounded-full">
+                                                    Programado para {formatScheduledTime(order.scheduled_for)}
+                                                </Badge>
+                                            )}
                                         </div>
                                         <p className="text-muted-foreground text-sm">
                                             {ORDER_TYPE_LABELS[order.type]} · {order.items.length}{' '}

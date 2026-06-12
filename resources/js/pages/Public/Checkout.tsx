@@ -16,10 +16,12 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { clearCartStorage, loadCartFromStorage } from '@/lib/cart-storage';
+import { formatHourLabel } from '@/lib/business-hours';
 import { findZoneForCoords, type Zone } from '@/lib/delivery-zones';
 import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
 import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
+import { getPreorderWindow, type CartContext } from '@/lib/preorder';
 import PublicLayout from '@/layouts/PublicLayout';
 import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type CartItem, type CartSource, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
@@ -35,9 +37,10 @@ interface CheckoutProps {
     zones: Zone[];
     customer: Customer | null;
     addresses: CustomerAddress[];
+    cart_context: CartContext;
 }
 
-export default function Checkout({ organization, zones, customer, addresses }: CheckoutProps) {
+export default function Checkout({ organization, zones, customer, addresses, cart_context }: CheckoutProps) {
     const didInit = useRef(false);
     const errorBannerRef = useRef<HTMLDivElement>(null);
     const [cartItems, setCartItems] = useState<CartItem[] | null>(null);
@@ -70,6 +73,8 @@ export default function Checkout({ organization, zones, customer, addresses }: C
             quantity: number;
             source: CartSource;
         }>,
+        scheduled_for: null as string | null,
+        is_preorder: false,
     });
 
     const selectSavedAddress = useCallback(
@@ -290,6 +295,21 @@ export default function Checkout({ organization, zones, customer, addresses }: C
         [cartItems],
     );
 
+    const preorderWindow = useMemo(
+        () => (cartItems ? getPreorderWindow(cartItems, cart_context) : null),
+        [cartItems, cart_context],
+    );
+
+    useEffect(() => {
+        if (preorderWindow === null && data.is_preorder) {
+            setData((current) => ({
+                ...current,
+                is_preorder: false,
+                scheduled_for: null,
+            }));
+        }
+    }, [data.is_preorder, preorderWindow, setData]);
+
     const matchedZone = useMemo(() => {
         if (data.type !== 'delivery') {
             return null;
@@ -339,7 +359,8 @@ export default function Checkout({ organization, zones, customer, addresses }: C
     const canSubmit =
         !processing &&
         (data.type !== 'delivery' ||
-            (matchedZone !== null && (data.delivery_address !== '' || data.address_id !== '')));
+            (matchedZone !== null && (data.delivery_address !== '' || data.address_id !== ''))) &&
+        (!data.is_preorder || Boolean(data.scheduled_for));
 
     if (!cartItems) {
         return null;
@@ -766,6 +787,63 @@ export default function Checkout({ organization, zones, customer, addresses }: C
                                     <InputError message={errors.zone_id} />
                                 </div>
                             )}
+                        </section>
+                    )}
+
+                    {preorderWindow && (
+                        <section className="space-y-3 hidden">
+                            <h2 className="text-lg font-semibold">¿Cuándo quieres tu pedido?</h2>
+                            <p className="text-muted-foreground text-sm">
+                                Algunos platillos de tu pedido están fuera de horario. Puedes recibirlo lo antes posible
+                                o programar una hora entre{' '}
+                                {formatHourLabel(preorderWindow.available_from)} y{' '}
+                                {formatHourLabel(preorderWindow.available_until)}.
+                            </p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <Button
+                                    type="button"
+                                    variant={!data.is_preorder ? 'default' : 'outline'}
+                                    size="lg"
+                                    className="h-auto rounded-xl py-4"
+                                    onClick={() =>
+                                        setData((current) => ({
+                                            ...current,
+                                            is_preorder: false,
+                                            scheduled_for: null,
+                                        }))
+                                    }
+                                    disabled={processing}
+                                >
+                                    Lo antes posible
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={data.is_preorder ? 'default' : 'outline'}
+                                    size="lg"
+                                    className="h-auto rounded-xl py-4"
+                                    onClick={() => setData('is_preorder', true)}
+                                    disabled={processing}
+                                >
+                                    Programar hora
+                                </Button>
+                            </div>
+                            {data.is_preorder && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="scheduled-for">Hora del pedido</Label>
+                                    <Input
+                                        id="scheduled-for"
+                                        type="time"
+                                        min={preorderWindow.available_from}
+                                        max={preorderWindow.available_until}
+                                        value={data.scheduled_for ?? ''}
+                                        onChange={(e) => setData('scheduled_for', e.target.value || null)}
+                                        required
+                                        disabled={processing}
+                                    />
+                                    <InputError message={errors.scheduled_for} />
+                                </div>
+                            )}
+                            <InputError message={errors.is_preorder} />
                         </section>
                     )}
 

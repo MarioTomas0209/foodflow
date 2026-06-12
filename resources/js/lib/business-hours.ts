@@ -14,7 +14,12 @@ export const DAY_NAMES = [
 export const WEEKDAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 
 export function formatHourLabel(time: string): string {
-    return time.slice(0, 5);
+    const normalized = time.slice(0, 5);
+    const [hours, minutes] = normalized.split(':').map(Number);
+    const period = hours >= 12 ? 'pm' : 'am';
+    const hour12 = hours % 12 || 12;
+
+    return `${String(hour12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
 }
 
 export function formatHoursRange(hour: Pick<OrganizationHour, 'opens_at' | 'closes_at' | 'is_closed'>): string {

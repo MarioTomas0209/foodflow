@@ -32,6 +32,8 @@ class Order extends Model
         'subtotal',
         'delivery_fee',
         'total',
+        'scheduled_for',
+        'is_preorder',
     ];
 
     /**
@@ -45,6 +47,8 @@ class Order extends Model
             'total' => 'decimal:2',
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
+            'scheduled_for' => 'datetime',
+            'is_preorder' => 'boolean',
         ];
     }
 

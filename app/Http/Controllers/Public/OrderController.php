@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Product;
 use App\Support\GoogleMapsUrlParser;
 use App\Support\OrderItemImageResolver;
+use App\Support\TimeFormatter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,7 +61,41 @@ class OrderController extends Controller
                     'id', 'label', 'address', 'city', 'latitude', 'longitude', 'maps_url', 'is_default',
                 ])
                 : [],
+            'cart_context' => $this->buildCartContext($organization),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildCartContext(Organization $organization): array
+    {
+        $categories = $organization->categories()
+            ->where('is_active', true)
+            ->whereNotNull('available_from')
+            ->where('schedule_type', 'informative')
+            ->get(['id', 'available_from', 'available_until', 'schedule_type'])
+            ->map(fn ($category) => [
+                'id' => $category->id,
+                'available_from' => $category->available_from
+                    ? substr((string) $category->available_from, 0, 5)
+                    : null,
+                'available_until' => $category->available_until
+                    ? substr((string) $category->available_until, 0, 5)
+                    : null,
+                'schedule_type' => $category->schedule_type,
+                'is_available_now' => $category->isAvailableNow(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'categories' => $categories,
+            'product_categories' => Product::query()
+                ->where('organization_id', $organization->id)
+                ->where('is_active', true)
+                ->pluck('category_id', 'id'),
+        ];
     }
 
     public function resolveMapsUrl(Request $request, string $slug): JsonResponse
@@ -133,9 +168,48 @@ class OrderController extends Controller
             'items.*.product_id' => ['required', 'string'],
             'items.*.product_variant_id' => ['nullable', 'string'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'is_preorder' => ['boolean'],
+            'scheduled_for' => [
+                Rule::requiredIf($request->boolean('is_preorder')),
+                'nullable',
+                'date_format:H:i',
+            ],
         ]);
 
         abort_unless($validated['organization_id'] === $organization->id, 403);
+
+        $isPreorder = (bool) ($validated['is_preorder'] ?? false);
+        $scheduledFor = null;
+
+        if ($isPreorder) {
+            $preorderWindow = $this->resolvePreorderWindow($organization, $validated['items']);
+
+            if ($preorderWindow === null) {
+                throw ValidationException::withMessages([
+                    'is_preorder' => 'Este pedido no admite programación de hora.',
+                ]);
+            }
+
+            $scheduledTime = $validated['scheduled_for'] ?? null;
+
+            if ($scheduledTime === null) {
+                throw ValidationException::withMessages([
+                    'scheduled_for' => 'Selecciona la hora de tu pedido.',
+                ]);
+            }
+
+            if ($scheduledTime < $preorderWindow['available_from'] || $scheduledTime > $preorderWindow['available_until']) {
+                throw ValidationException::withMessages([
+                    'scheduled_for' => sprintf(
+                        'La hora debe estar entre %s y %s.',
+                        TimeFormatter::format12Hour($preorderWindow['available_from']),
+                        TimeFormatter::format12Hour($preorderWindow['available_until']),
+                    ),
+                ]);
+            }
+
+            $scheduledFor = today()->setTimeFromTimeString($scheduledTime);
+        }
 
         if ($customer && ! empty($validated['address_id'])) {
             /** @var CustomerAddress $savedAddress */
@@ -250,7 +324,7 @@ class OrderController extends Controller
 
         $total = round($subtotal + $deliveryFee, 2);
 
-        $order = DB::transaction(function () use ($organization, $validated, $resolvedItems, $subtotal, $deliveryFee, $deliveryZoneId, $total) {
+        $order = DB::transaction(function () use ($organization, $validated, $resolvedItems, $subtotal, $deliveryFee, $deliveryZoneId, $total, $isPreorder, $scheduledFor) {
             $order = Order::create([
                 'organization_id' => $organization->id,
                 'customer_id' => Auth::guard('customer')->id(),
@@ -269,6 +343,8 @@ class OrderController extends Controller
                 'subtotal' => $subtotal,
                 'delivery_fee' => $deliveryFee,
                 'total' => $total,
+                'is_preorder' => $isPreorder,
+                'scheduled_for' => $scheduledFor,
             ]);
 
             foreach ($resolvedItems as $item) {
@@ -315,6 +391,72 @@ class OrderController extends Controller
         broadcast(new NewOrderReceived($order))->toOthers();
 
         return redirect()->route('storefront.order.confirmation', $order);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array{available_from: string, available_until: string}|null
+     */
+    private function resolvePreorderWindow(Organization $organization, array $items): ?array
+    {
+        $cartContext = $this->buildCartContext($organization);
+        $categoryMap = collect($cartContext['categories'])->keyBy('id');
+        $productCategories = collect($cartContext['product_categories']);
+        $affectedCategoryIds = collect();
+
+        foreach ($items as $item) {
+            if (($item['source'] ?? 'menu') !== 'menu') {
+                continue;
+            }
+
+            $categoryId = $productCategories->get($item['product_id']);
+
+            if ($categoryId === null) {
+                continue;
+            }
+
+            $category = $categoryMap->get($categoryId);
+
+            if ($category === null) {
+                continue;
+            }
+
+            if ($category['schedule_type'] !== 'informative' || $category['is_available_now']) {
+                continue;
+            }
+
+            if (empty($category['available_from']) || empty($category['available_until'])) {
+                continue;
+            }
+
+            $affectedCategoryIds->push($categoryId);
+        }
+
+        if ($affectedCategoryIds->isEmpty()) {
+            return null;
+        }
+
+        $earliestFrom = '23:59';
+        $latestUntil = '00:00';
+
+        foreach ($affectedCategoryIds->unique() as $categoryId) {
+            $category = $categoryMap->get($categoryId);
+            $from = substr((string) $category['available_from'], 0, 5);
+            $until = substr((string) $category['available_until'], 0, 5);
+
+            if ($from < $earliestFrom) {
+                $earliestFrom = $from;
+            }
+
+            if ($until > $latestUntil) {
+                $latestUntil = $until;
+            }
+        }
+
+        return [
+            'available_from' => $earliestFrom,
+            'available_until' => $latestUntil,
+        ];
     }
 
     /**

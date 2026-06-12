@@ -189,6 +189,8 @@ export interface Order {
     subtotal: string;
     delivery_fee: string;
     total: string;
+    is_preorder?: boolean;
+    scheduled_for?: string | null;
     items: OrderItem[];
     created_at: string;
     organization?: {

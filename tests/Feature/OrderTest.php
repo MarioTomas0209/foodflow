@@ -31,6 +31,8 @@ test('guests can view checkout page for active organization', function () {
             ->where('customer', null)
             ->has('addresses', 0)
             ->has('zones', 0)
+            ->has('cart_context.categories')
+            ->has('cart_context.product_categories')
         );
 });
 
@@ -863,4 +865,122 @@ test('guests can place an order with daily menu items', function () {
     ]);
 
     expect($dailyItem->fresh()->stock)->toBe(3);
+});
+
+test('guests can place a scheduled preorder for informative categories outside hours', function () {
+    \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-06-09 12:00:00'));
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Pedido programado',
+        'slug' => 'pedido-programado',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Comida',
+        'is_active' => true,
+        'sort_order' => 0,
+        'available_from' => '13:00:00',
+        'available_until' => '17:00:00',
+        'schedule_type' => 'informative',
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Enchiladas',
+        'price' => 80,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $response = $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Roberto',
+        'customer_phone' => '5511223344',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'is_preorder' => true,
+        'scheduled_for' => '14:30',
+        'items' => [
+            [
+                'source' => 'menu',
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ]);
+
+    $order = Order::query()->first();
+
+    expect($order)->not->toBeNull()
+        ->and($order->is_preorder)->toBeTrue()
+        ->and($order->scheduled_for?->format('H:i'))->toBe('14:30');
+
+    $response->assertRedirect(route('storefront.order.confirmation', $order));
+
+    \Illuminate\Support\Carbon::setTestNow();
+});
+
+test('preorder rejects scheduled time outside category window', function () {
+    \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-06-09 12:00:00'));
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Hora inválida',
+        'slug' => 'hora-invalida',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Comida',
+        'is_active' => true,
+        'sort_order' => 0,
+        'available_from' => '13:00:00',
+        'available_until' => '17:00:00',
+        'schedule_type' => 'informative',
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Sopa',
+        'price' => 45,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Laura',
+        'customer_phone' => '5511334455',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'is_preorder' => true,
+        'scheduled_for' => '18:00',
+        'items' => [
+            [
+                'source' => 'menu',
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertSessionHasErrors([
+        'scheduled_for' => 'La hora debe estar entre 01:00 pm y 05:00 pm.',
+    ]);
+
+    expect(Order::query()->count())->toBe(0);
+
+    \Illuminate\Support\Carbon::setTestNow();
 });

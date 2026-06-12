@@ -52,6 +52,13 @@ export function formatOrderTime(isoDate: string): string {
     }).format(new Date(isoDate));
 }
 
+export function formatScheduledTime(isoDate: string): string {
+    return new Intl.DateTimeFormat('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date(isoDate));
+}
+
 export function formatOrderDate(isoDate: string): string {
     return new Intl.DateTimeFormat('es-MX', {
         dateStyle: 'medium',
