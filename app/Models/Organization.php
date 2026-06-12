@@ -73,6 +73,30 @@ class Organization extends Model
         return $this->hasMany(DeliveryZone::class)->orderBy('sort_order');
     }
 
+    public function hours(): HasMany
+    {
+        return $this->hasMany(OrganizationHour::class)->orderBy('day_of_week');
+    }
+
+    public function isOpenNow(): bool
+    {
+        $now = now();
+        $dayOfWeek = (int) $now->dayOfWeek;
+        $currentTime = $now->format('H:i:s');
+
+        $hour = $this->hours()->where('day_of_week', $dayOfWeek)->first();
+
+        if ($hour === null) {
+            return true;
+        }
+
+        if ($hour->is_closed) {
+            return false;
+        }
+
+        return $currentTime >= $hour->opens_at && $currentTime <= $hour->closes_at;
+    }
+
     public function findDeliveryZoneFor(float $latitude, float $longitude): ?DeliveryZone
     {
         return $this->deliveryZones()

@@ -46,6 +46,15 @@ class OnboardingController extends Controller
                 'role' => 'owner',
             ]);
 
+            foreach (range(0, 6) as $day) {
+                $organization->hours()->create([
+                    'day_of_week' => $day,
+                    'opens_at' => '08:00:00',
+                    'closes_at' => '20:00:00',
+                    'is_closed' => $day === 0,
+                ]);
+            }
+
             $user->update(['current_organization_id' => $organization->id]);
         });
 
