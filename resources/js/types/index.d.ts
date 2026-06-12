@@ -93,6 +93,39 @@ export interface Category {
     products: Product[];
 }
 
+export interface DailyMenuItemVariant {
+    id: string;
+    name: string;
+    price: string;
+    stock: number | null;
+    sort_order: number;
+}
+
+export interface DailyMenuItem {
+    id: string;
+    name: string;
+    description: string | null;
+    has_variants: boolean;
+    price: string;
+    stock: number | null;
+    sort_order: number;
+    image: string | null;
+    is_available?: boolean;
+    variants: DailyMenuItemVariant[];
+}
+
+export interface DailyMenu {
+    id: string;
+    date: string;
+    name: string | null;
+    available_from: string | null;
+    available_until: string | null;
+    is_active?: boolean;
+    is_available_now: boolean;
+    items: DailyMenuItem[];
+    items_count?: number;
+}
+
 export interface CartItem {
     productId: string;
     productName: string;

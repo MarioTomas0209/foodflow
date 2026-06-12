@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { CartDrawer } from '@/components/storefront/CartDrawer';
 import { CategoryNav } from '@/components/storefront/CategoryNav';
+import { DailyMenuSection } from '@/components/storefront/DailyMenuSection';
 import { ProductCard } from '@/components/storefront/ProductCard';
 import { StorefrontHours } from '@/components/storefront/StorefrontHours';
 import { Badge } from '@/components/ui/badge';
@@ -19,7 +20,7 @@ import { saveCartForCheckout } from '@/lib/cart-storage';
 import { cn } from '@/lib/utils';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
-import { type Category, type PublicOrganization } from '@/types';
+import { type Category, type DailyMenu, type PublicOrganization } from '@/types';
 
 function getStorefrontScrollOffset(): number {
     const header = document.getElementById('public-storefront-header');
@@ -32,10 +33,11 @@ function getStorefrontScrollOffset(): number {
 
 interface StorefrontProps {
     organization: PublicOrganization;
+    daily_menu: DailyMenu | null;
     categories: Category[];
 }
 
-export default function Storefront({ organization, categories }: StorefrontProps) {
+export default function Storefront({ organization, daily_menu, categories }: StorefrontProps) {
     const [cartOpen, setCartOpen] = useState(false);
     const [stockMessage, setStockMessage] = useState<string | null>(null);
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
@@ -142,6 +144,8 @@ export default function Storefront({ organization, categories }: StorefrontProps
                         )}
                     </section>
                 )}
+
+                {daily_menu && daily_menu.items.length > 0 && <DailyMenuSection dailyMenu={daily_menu} />}
 
                 {categories.length > 0 && (
                     <div

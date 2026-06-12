@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutDashboard, MapPin, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, MapPin, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { OrderNotificationsBell } from '@/components/dashboard/order-notifications-bell';
@@ -39,6 +39,12 @@ const navItems: NavItem[] = [
         href: route('dashboard.menu.index'),
         icon: UtensilsCrossed,
         isActive: (url) => url.startsWith('/dashboard/menu'),
+    },
+    {
+        title: 'Menú del día',
+        href: route('dashboard.daily-menus.index'),
+        icon: CalendarDays,
+        isActive: (url) => url.startsWith('/dashboard/daily-menus'),
     },
     {
         title: 'Zonas de entrega',

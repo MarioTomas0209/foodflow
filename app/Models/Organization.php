@@ -78,6 +78,24 @@ class Organization extends Model
         return $this->hasMany(OrganizationHour::class)->orderBy('day_of_week');
     }
 
+    public function dailyMenus(): HasMany
+    {
+        return $this->hasMany(DailyMenu::class);
+    }
+
+    public function todayMenu(): ?DailyMenu
+    {
+        return $this->dailyMenus()
+            ->where('date', today())
+            ->where('is_active', true)
+            ->with([
+                'items' => fn ($query) => $query
+                    ->with('variants')
+                    ->orderBy('sort_order'),
+            ])
+            ->first();
+    }
+
     public function isOpenNow(): bool
     {
         $now = now();

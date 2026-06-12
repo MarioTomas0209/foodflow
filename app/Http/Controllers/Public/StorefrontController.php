@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
+use App\Models\DailyMenu;
+use App\Models\DailyMenuItem;
 use App\Models\Organization;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -65,7 +67,45 @@ class StorefrontController extends Controller
                 ]),
                 'is_open_now' => $organization->isOpenNow(),
             ]),
+            'daily_menu' => $this->formatDailyMenuForStorefront($organization->todayMenu()),
             'categories' => $categories,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function formatDailyMenuForStorefront(?DailyMenu $menu): ?array
+    {
+        if ($menu === null) {
+            return null;
+        }
+
+        return [
+            'id' => $menu->id,
+            'date' => $menu->date->format('Y-m-d'),
+            'name' => $menu->name,
+            'available_from' => $menu->available_from,
+            'available_until' => $menu->available_until,
+            'is_available_now' => $menu->isAvailableNow(),
+            'items' => $menu->items->map(fn (DailyMenuItem $item) => [
+                'id' => $item->id,
+                'name' => $item->name,
+                'description' => $item->description,
+                'has_variants' => $item->has_variants,
+                'price' => $item->price,
+                'stock' => $item->stock,
+                'sort_order' => $item->sort_order,
+                'image' => $item->imagePublicUrl(),
+                'is_available' => $item->isAvailable(),
+                'variants' => $item->variants->map(fn ($variant) => [
+                    'id' => $variant->id,
+                    'name' => $variant->name,
+                    'price' => $variant->price,
+                    'stock' => $variant->stock,
+                    'sort_order' => $variant->sort_order,
+                ])->values(),
+            ])->values(),
+        ];
     }
 }

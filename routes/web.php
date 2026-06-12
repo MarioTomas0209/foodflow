@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Dashboard\BusinessHoursController;
+use App\Http\Controllers\Dashboard\DailyMenuController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\DeliveryZoneController;
 use App\Http\Controllers\Dashboard\MenuController;
@@ -50,6 +51,11 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::post('/delivery-zones', [DeliveryZoneController::class, 'store'])->name('delivery-zones.store');
     Route::put('/delivery-zones/{zone}', [DeliveryZoneController::class, 'update'])->name('delivery-zones.update');
     Route::delete('/delivery-zones/{zone}', [DeliveryZoneController::class, 'destroy'])->name('delivery-zones.destroy');
+    Route::resource('daily-menus', DailyMenuController::class)
+        ->names('daily-menus')
+        ->except(['show', 'update']);
+    Route::post('daily-menus/{daily_menu}', [DailyMenuController::class, 'update'])
+        ->name('daily-menus.update');
 });
 
 Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('storefront.order.confirmation');
