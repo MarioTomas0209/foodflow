@@ -51,3 +51,10 @@ export function formatOrderTime(isoDate: string): string {
         minute: '2-digit',
     }).format(new Date(isoDate));
 }
+
+export function formatOrderDate(isoDate: string): string {
+    return new Intl.DateTimeFormat('es-MX', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(isoDate));
+}

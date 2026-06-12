@@ -119,6 +119,11 @@ export interface Order {
     total: string;
     items: OrderItem[];
     created_at: string;
+    organization?: {
+        id: string;
+        name: string;
+        slug: string;
+    };
 }
 
 export interface OrderFilters {

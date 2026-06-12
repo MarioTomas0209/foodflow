@@ -14,7 +14,14 @@ import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
 import { type Category, type PublicOrganization } from '@/types';
 
-const SCROLL_OFFSET = 120;
+function getStorefrontScrollOffset(): number {
+    const header = document.getElementById('public-storefront-header');
+    const categoryNav = document.getElementById('public-category-nav');
+    const headerHeight = header?.offsetHeight ?? 0;
+    const navHeight = categoryNav?.offsetHeight ?? 0;
+
+    return headerHeight + navHeight + 8;
+}
 
 interface StorefrontProps {
     organization: PublicOrganization;
@@ -37,7 +44,7 @@ export default function Storefront({ organization, categories }: StorefrontProps
 
         setActiveCategoryId(id);
 
-        const top = el.getBoundingClientRect().top + window.scrollY - SCROLL_OFFSET;
+        const top = el.getBoundingClientRect().top + window.scrollY - getStorefrontScrollOffset();
 
         window.scrollTo({ top, behavior: 'smooth' });
     }, []);
@@ -123,7 +130,10 @@ export default function Storefront({ organization, categories }: StorefrontProps
                 )}
 
                 {categories.length > 0 && (
-                    <div className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-[4.5rem] z-[9] -mx-4 border-b px-4 py-3 backdrop-blur">
+                    <div
+                        id="public-category-nav"
+                        className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-36 z-[9] -mx-4 border-b px-4 py-3 backdrop-blur sm:top-[4.5rem]"
+                    >
                         <CategoryNav
                             categories={categories}
                             activeCategoryId={activeCategoryId}
@@ -141,7 +151,7 @@ export default function Storefront({ organization, categories }: StorefrontProps
                         <section
                             key={category.id}
                             id={`category-${category.id}`}
-                            className="scroll-mt-[7.5rem] space-y-4"
+                            className="scroll-mt-44 space-y-4 sm:scroll-mt-[7.5rem]"
                         >
                             <div>
                                 <h2 className="text-xl font-semibold">{category.name}</h2>

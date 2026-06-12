@@ -7,6 +7,7 @@ use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\OrganizationController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Public\CustomerAuthController;
+use App\Http\Controllers\Public\CustomerOrderController;
 use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
 use Illuminate\Support\Facades\Broadcast;
@@ -59,6 +60,12 @@ Route::post('/{slug}/register', [CustomerAuthController::class, 'register'])
     ->name('storefront.register.store')->where('slug', $slugPattern);
 Route::post('/{slug}/logout', [CustomerAuthController::class, 'logout'])
     ->name('storefront.logout')->where('slug', $slugPattern);
+Route::middleware('auth.customer')->group(function () use ($slugPattern) {
+    Route::get('/{slug}/orders', [CustomerOrderController::class, 'index'])
+        ->name('storefront.orders.index')->where('slug', $slugPattern);
+    Route::get('/{slug}/orders/{order}', [CustomerOrderController::class, 'show'])
+        ->name('storefront.orders.show')->where('slug', $slugPattern);
+});
 Route::get('/{slug}/checkout', [OrderController::class, 'checkout'])->name('storefront.checkout')->where('slug', $slugPattern);
 Route::get('/{slug}/maps/resolve', [OrderController::class, 'resolveMapsUrl'])->name('storefront.maps.resolve')->where('slug', $slugPattern);
 Route::post('/{slug}/orders', [OrderController::class, 'store'])->name('storefront.orders.store')->where('slug', $slugPattern);
