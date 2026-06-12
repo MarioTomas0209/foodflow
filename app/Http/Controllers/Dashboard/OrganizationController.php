@@ -28,6 +28,9 @@ class OrganizationController extends Controller
                 'state' => $organization->state,
                 'logo' => $organization->logoPublicUrl(),
             ],
+            'hours' => $organization->hours()->orderBy('day_of_week')->get([
+                'id', 'day_of_week', 'opens_at', 'closes_at', 'is_closed',
+            ]),
         ]);
     }
 

@@ -58,6 +58,10 @@ class StorefrontController extends Controller
                 'city',
             ]), [
                 'logo' => $organization->logoPublicUrl(),
+                'hours' => $organization->hours()->orderBy('day_of_week')->get([
+                    'day_of_week', 'opens_at', 'closes_at', 'is_closed',
+                ]),
+                'is_open_now' => $organization->isOpenNow(),
             ]),
             'categories' => $categories,
         ]);

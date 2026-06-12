@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CartDrawer } from '@/components/storefront/CartDrawer';
 import { CategoryNav } from '@/components/storefront/CategoryNav';
 import { ProductCard } from '@/components/storefront/ProductCard';
+import { StorefrontHours } from '@/components/storefront/StorefrontHours';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/hooks/use-cart';
@@ -113,6 +114,13 @@ export default function Storefront({ organization, categories }: StorefrontProps
             <Head title={organization.name} />
 
             <div className="flex flex-col gap-6 pb-24">
+                {organization.hours && organization.hours.length > 0 && (
+                    <StorefrontHours
+                        hours={organization.hours}
+                        isOpenNow={organization.is_open_now ?? true}
+                    />
+                )}
+
                 {(organization.description || organization.phone) && (
                     <section className="space-y-2">
                         {organization.description && (

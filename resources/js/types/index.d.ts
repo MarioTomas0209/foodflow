@@ -41,6 +41,16 @@ export interface PublicOrganization {
     logo: string | null;
     address: string | null;
     city: string | null;
+    hours?: OrganizationHour[];
+    is_open_now?: boolean;
+}
+
+export interface OrganizationHour {
+    id?: string;
+    day_of_week: number;
+    opens_at: string;
+    closes_at: string;
+    is_closed: boolean;
 }
 
 export interface ProductVariant {

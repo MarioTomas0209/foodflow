@@ -2,6 +2,7 @@
 
 use App\Models\Category;
 use App\Models\Organization;
+use App\Models\OrganizationHour;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
@@ -50,6 +51,34 @@ test('guests can view an active organization storefront', function () {
             ->where('categories.0.name', 'Tacos')
             ->has('categories.0.products', 1)
             ->where('categories.0.products.0.id', $product->id)
+        );
+});
+
+test('storefront includes business hours and open status', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Horarios visibles',
+        'slug' => 'horarios-visibles',
+        'status' => 'active',
+    ]);
+
+    OrganizationHour::create([
+        'organization_id' => $organization->id,
+        'day_of_week' => 1,
+        'opens_at' => '08:00:00',
+        'closes_at' => '20:00:00',
+        'is_closed' => false,
+    ]);
+
+    $this->get(route('storefront.show', $organization->slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('organization.hours', 1)
+            ->where('organization.hours.0.day_of_week', 1)
+            ->where('organization.hours.0.opens_at', '08:00:00')
+            ->where('organization.is_open_now', $organization->fresh()->isOpenNow())
         );
 });
 

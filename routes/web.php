@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Dashboard\BusinessHoursController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\DeliveryZoneController;
 use App\Http\Controllers\Dashboard\MenuController;
@@ -43,6 +44,7 @@ Route::middleware(['auth', 'org.context'])->prefix('dashboard')->name('dashboard
     Route::patch('/orders/{order}/status', [DashboardOrderController::class, 'updateStatus'])->name('orders.update-status');
     Route::get('/settings', [OrganizationController::class, 'edit'])->name('settings');
     Route::post('/settings', [OrganizationController::class, 'update'])->name('settings.update');
+    Route::put('/hours', [BusinessHoursController::class, 'update'])->name('hours.update');
     Route::get('/delivery-zones', [DeliveryZoneController::class, 'index'])->name('delivery-zones.index');
     Route::post('/delivery-zones', [DeliveryZoneController::class, 'store'])->name('delivery-zones.store');
     Route::put('/delivery-zones/{zone}', [DeliveryZoneController::class, 'update'])->name('delivery-zones.update');

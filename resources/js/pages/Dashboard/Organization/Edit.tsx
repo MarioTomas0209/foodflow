@@ -3,19 +3,21 @@ import { ImagePlus, LoaderCircle } from 'lucide-react';
 import { FormEventHandler, useMemo, useRef } from 'react';
 
 import { ShareMenuActions } from '@/components/dashboard/share-menu-actions';
+import { BusinessHoursForm } from '@/components/dashboard/business-hours-form';
 import InputError from '@/components/input-error';
 import { FormTextarea } from '@/components/menu/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import DashboardLayout from '@/layouts/DashboardLayout';
-import { type DashboardOrganization } from '@/types';
+import { type DashboardOrganization, type OrganizationHour } from '@/types';
 
 interface EditProps {
     organization: DashboardOrganization;
+    hours: OrganizationHour[];
 }
 
-export default function Edit({ organization }: EditProps) {
+export default function Edit({ organization, hours }: EditProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const { data, setData, post, processing, errors } = useForm({
@@ -210,6 +212,8 @@ export default function Edit({ organization }: EditProps) {
                         Guardar cambios
                     </Button>
                 </form>
+
+                <BusinessHoursForm hours={hours} />
             </div>
         </DashboardLayout>
     );
