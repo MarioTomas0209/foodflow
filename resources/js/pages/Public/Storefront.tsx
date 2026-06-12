@@ -10,7 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/hooks/use-cart';
 import { validateCartAgainstCatalog } from '@/lib/cart-stock';
+import {
+    formatCategoryAvailabilityMessage,
+    isCategoryScheduleBannerWarning,
+    shouldShowCategoryScheduleBanner,
+} from '@/lib/category-schedule';
 import { saveCartForCheckout } from '@/lib/cart-storage';
+import { cn } from '@/lib/utils';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
 import { type Category, type PublicOrganization } from '@/types';
@@ -155,7 +161,12 @@ export default function Storefront({ organization, categories }: StorefrontProps
                         Este menú aún no tiene productos disponibles.
                     </p>
                 ) : (
-                    categories.map((category) => (
+                    categories.map((category) => {
+                        const scheduleMessage = formatCategoryAvailabilityMessage(category);
+                        const showScheduleBanner = shouldShowCategoryScheduleBanner(category);
+                        const scheduleBannerIsWarning = isCategoryScheduleBannerWarning(category);
+
+                        return (
                         <section
                             key={category.id}
                             id={`category-${category.id}`}
@@ -168,11 +179,30 @@ export default function Storefront({ organization, categories }: StorefrontProps
                                 )}
                             </div>
 
+                            {showScheduleBanner && scheduleMessage && (
+                                <div
+                                    className={cn(
+                                        'rounded-xl border px-4 py-3 text-sm',
+                                        scheduleBannerIsWarning
+                                            ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200'
+                                            : 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-200',
+                                    )}
+                                >
+                                    {scheduleMessage}
+                                    {category.schedule_type === 'informative' && !category.is_available_now && (
+                                        <span className="mt-1 block text-xs opacity-90">
+                                            Puedes hacer tu pedido ahora; la comida estará lista en este horario.
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
                             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 {category.products.map((product) => (
                                     <li key={product.id} className="min-h-0">
                                         <ProductCard
                                             product={product}
+                                            categoryAvailable={category.can_order_now}
                                             getQuantityInCart={cart.getQuantity}
                                             onAdd={cart.addItem}
                                         />
@@ -180,7 +210,8 @@ export default function Storefront({ organization, categories }: StorefrontProps
                                 ))}
                             </ul>
                         </section>
-                    ))
+                        );
+                    })
                 )}
             </div>
 

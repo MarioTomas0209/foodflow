@@ -11,6 +11,7 @@ import { type Product, type ProductVariant } from '@/types';
 
 interface ProductCardProps {
     product: Product;
+    categoryAvailable?: boolean;
     getQuantityInCart: (productId: string, variantId: string | null) => number;
     onAdd: (product: Product, variant?: ProductVariant) => boolean;
 }
@@ -25,7 +26,7 @@ function firstAvailableVariantId(product: Product): string | null {
     return available?.id ?? product.variants[0]?.id ?? null;
 }
 
-export function ProductCard({ product, getQuantityInCart, onAdd }: ProductCardProps) {
+export function ProductCard({ product, categoryAvailable = true, getQuantityInCart, onAdd }: ProductCardProps) {
     const [selectedVariantId, setSelectedVariantId] = useState<string | null>(() =>
         product.has_variants ? firstAvailableVariantId(product) : null,
     );
@@ -46,12 +47,16 @@ export function ProductCard({ product, getQuantityInCart, onAdd }: ProductCardPr
     const displayPrice = product.has_variants && selectedVariant ? selectedVariant.price : product.price;
 
     const canAdd = useMemo(() => {
+        if (!categoryAvailable) {
+            return false;
+        }
+
         if (product.has_variants) {
             return selectedVariant !== undefined && isInStock(selectedVariant.stock) && !atStockLimit;
         }
 
         return isInStock(product.stock) && !atStockLimit;
-    }, [atStockLimit, product.has_variants, product.stock, selectedVariant]);
+    }, [atStockLimit, categoryAvailable, product.has_variants, product.stock, selectedVariant]);
 
     const handleAdd = () => {
         if (!canAdd) {

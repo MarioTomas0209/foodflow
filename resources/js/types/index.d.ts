@@ -76,12 +76,20 @@ export interface Product {
     variants: ProductVariant[];
 }
 
+export type CategoryScheduleType = 'informative' | 'restricted';
+
 export interface Category {
     id: string;
     name: string;
     description: string | null;
     is_active: boolean;
     sort_order: number;
+    available_from: string | null;
+    available_until: string | null;
+    available_days: number[] | null;
+    schedule_type: CategoryScheduleType;
+    is_available_now: boolean;
+    can_order_now: boolean;
     products: Product[];
 }
 

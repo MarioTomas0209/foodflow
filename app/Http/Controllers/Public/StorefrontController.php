@@ -45,6 +45,8 @@ class StorefrontController extends Controller
                 $category->products->each(function ($product) {
                     $product->setAttribute('image', $product->imagePublicUrl());
                 });
+                $category->setAttribute('is_available_now', $category->isAvailableNow());
+                $category->setAttribute('can_order_now', $category->canOrderNow());
             });
 
         return Inertia::render('Public/Storefront', [

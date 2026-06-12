@@ -25,10 +25,10 @@ export default function Index({ categories }: MenuPageProps) {
             <Head title="Menú" />
 
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-                <MenuHeader showNewButton={categories.length > 0} onNewCategory={() => categoryForm.setOpen(true)} />
+                <MenuHeader showNewButton={categories.length > 0} onNewCategory={categoryForm.openForCreate} />
 
                 {categories.length === 0 ? (
-                    <MenuEmptyState onCreateCategory={() => categoryForm.setOpen(true)} />
+                    <MenuEmptyState onCreateCategory={categoryForm.openForCreate} />
                 ) : (
                     <div className="flex flex-col gap-4">
                         {categories.map((category) => (
@@ -37,6 +37,7 @@ export default function Index({ categories }: MenuPageProps) {
                                 category={category}
                                 onAddProduct={productForm.openForCategory}
                                 onEditProduct={productForm.openForEdit}
+                                onEditCategory={categoryForm.openForEdit}
                             />
                         ))}
                     </div>
@@ -45,9 +46,11 @@ export default function Index({ categories }: MenuPageProps) {
 
             <CreateCategoryDialog
                 open={categoryForm.open}
-                onOpenChange={categoryForm.setOpen}
+                mode={categoryForm.mode}
+                onOpenChange={categoryForm.handleOpenChange}
                 data={categoryForm.data}
                 setData={categoryForm.setData}
+                toggleDay={categoryForm.toggleDay}
                 processing={categoryForm.processing}
                 errors={categoryForm.errors}
                 onSubmit={categoryForm.submit}
