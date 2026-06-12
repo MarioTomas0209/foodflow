@@ -126,6 +126,26 @@ export interface DailyMenu {
     items_count?: number;
 }
 
+export type CartSource = 'menu' | 'daily';
+
+export interface CartableVariant {
+    id: string;
+    name: string;
+    price: string;
+    stock: number | null;
+}
+
+export interface CartableProduct {
+    id: string;
+    name: string;
+    price: string;
+    image: string | null;
+    has_variants: boolean;
+    stock: number | null;
+    variants: CartableVariant[];
+    source: CartSource;
+}
+
 export interface CartItem {
     productId: string;
     productName: string;
@@ -135,6 +155,7 @@ export interface CartItem {
     price: number;
     quantity: number;
     maxStock: number | null;
+    source: CartSource;
 }
 
 export interface Cart {

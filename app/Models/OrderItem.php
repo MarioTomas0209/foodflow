@@ -17,6 +17,8 @@ class OrderItem extends Model
         'order_id',
         'product_id',
         'product_variant_id',
+        'daily_menu_item_id',
+        'daily_menu_item_variant_id',
         'product_name',
         'variant_name',
         'product_image',

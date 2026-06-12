@@ -20,7 +20,7 @@ import { saveCartForCheckout } from '@/lib/cart-storage';
 import { cn } from '@/lib/utils';
 import { useNamedRoute } from '@/lib/ziggy';
 import PublicLayout from '@/layouts/PublicLayout';
-import { type Category, type DailyMenu, type PublicOrganization } from '@/types';
+import { type CartSource, type Category, type DailyMenu, type PublicOrganization } from '@/types';
 
 function getStorefrontScrollOffset(): number {
     const header = document.getElementById('public-storefront-header');
@@ -88,7 +88,7 @@ export default function Storefront({ organization, daily_menu, categories }: Sto
     }, [categories]);
 
     const handleCheckout = () => {
-        const validationError = validateCartAgainstCatalog(cart.items, categories);
+        const validationError = validateCartAgainstCatalog(cart.items, categories, daily_menu);
 
         if (validationError) {
             setStockMessage(validationError);
@@ -105,8 +105,8 @@ export default function Storefront({ organization, daily_menu, categories }: Sto
         router.visit(namedRoute('storefront.checkout', organization.slug));
     };
 
-    const handleIncrement = (productId: string, variantId: string | null) => {
-        const incremented = cart.incrementItem(productId, variantId);
+    const handleIncrement = (productId: string, variantId: string | null, source: CartSource = 'menu') => {
+        const incremented = cart.incrementItem(productId, variantId, source);
 
         if (!incremented) {
             setStockMessage('Ya agregaste el máximo disponible de ese producto.');
@@ -145,7 +145,13 @@ export default function Storefront({ organization, daily_menu, categories }: Sto
                     </section>
                 )}
 
-                {daily_menu && daily_menu.items.length > 0 && <DailyMenuSection dailyMenu={daily_menu} />}
+                {daily_menu && daily_menu.items.length > 0 && (
+                    <DailyMenuSection
+                        dailyMenu={daily_menu}
+                        getQuantityInCart={cart.getQuantity}
+                        onAdd={cart.addItem}
+                    />
+                )}
 
                 {categories.length > 0 && (
                     <div

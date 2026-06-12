@@ -1,14 +1,19 @@
+import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { stockLimitMessage } from '@/lib/cart-stock';
+import { dailyMenuItemToCartable, dailyMenuVariantToCartable } from '@/lib/cartable-product';
 import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
-import { type DailyMenuItem, type DailyMenuItemVariant } from '@/types';
+import { type CartableProduct, type CartableVariant, type DailyMenuItem } from '@/types';
 
 interface DailyMenuItemCardProps {
     item: DailyMenuItem;
+    getQuantityInCart: (productId: string, variantId: string | null, source?: 'menu' | 'daily') => number;
+    onAdd: (product: CartableProduct, variant?: CartableVariant) => boolean;
 }
 
 function isInStock(stock: number | null): boolean {
@@ -21,21 +26,58 @@ function firstAvailableVariantId(item: DailyMenuItem): string | null {
     return available?.id ?? item.variants[0]?.id ?? null;
 }
 
-export function DailyMenuItemCard({ item }: DailyMenuItemCardProps) {
+export function DailyMenuItemCard({ item, getQuantityInCart, onAdd }: DailyMenuItemCardProps) {
     const [selectedVariantId, setSelectedVariantId] = useState<string | null>(() =>
         item.has_variants ? firstAvailableVariantId(item) : null,
     );
+    const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
     const selectedVariant = item.variants.find((variant) => variant.id === selectedVariantId);
+    const quantityInCart = getQuantityInCart(item.id, item.has_variants ? selectedVariantId : null, 'daily');
     const hasAvailableVariants = item.variants.some((variant) => isInStock(variant.stock));
     const isSoldOut = item.has_variants ? !hasAvailableVariants : item.stock === 0;
 
+    const activeStock = item.has_variants
+        ? selectedVariant
+            ? selectedVariant.stock
+            : 0
+        : item.stock;
+    const atStockLimit = activeStock !== null && quantityInCart >= activeStock;
+
     const displayPrice = item.has_variants && selectedVariant ? selectedVariant.price : item.price;
+
+    const canAdd = useMemo(() => {
+        if (item.has_variants) {
+            return selectedVariant !== undefined && isInStock(selectedVariant.stock) && !atStockLimit;
+        }
+
+        return isInStock(item.stock) && !atStockLimit;
+    }, [atStockLimit, item.has_variants, item.stock, selectedVariant]);
 
     const variantSoldOutMap = useMemo(
         () => new Map(item.variants.map((variant) => [variant.id, variant.stock === 0])),
         [item.variants],
     );
+
+    const handleAdd = () => {
+        if (!canAdd) {
+            setLimitMessage(stockLimitMessage(activeStock, quantityInCart));
+            return;
+        }
+
+        const cartProduct = dailyMenuItemToCartable(item);
+        const added =
+            item.has_variants && selectedVariant
+                ? onAdd(cartProduct, dailyMenuVariantToCartable(selectedVariant))
+                : onAdd(cartProduct);
+
+        if (!added) {
+            setLimitMessage(stockLimitMessage(activeStock, quantityInCart));
+            return;
+        }
+
+        setLimitMessage(null);
+    };
 
     return (
         <Card className={cn('flex h-full flex-col overflow-hidden py-0', isSoldOut && 'opacity-90')}>
@@ -72,7 +114,7 @@ export function DailyMenuItemCard({ item }: DailyMenuItemCardProps) {
                 {item.has_variants && item.variants.length > 0 && (
                     <div className="space-y-2">
                         <div className="flex flex-wrap gap-1.5">
-                            {item.variants.map((variant: DailyMenuItemVariant) => {
+                            {item.variants.map((variant) => {
                                 const variantSoldOut = variantSoldOutMap.get(variant.id) ?? false;
 
                                 return (
@@ -86,7 +128,10 @@ export function DailyMenuItemCard({ item }: DailyMenuItemCardProps) {
                                             'h-auto rounded-full px-2.5 py-1.5 text-xs',
                                             variantSoldOut && 'opacity-60',
                                         )}
-                                        onClick={() => setSelectedVariantId(variant.id)}
+                                        onClick={() => {
+                                            setSelectedVariantId(variant.id);
+                                            setLimitMessage(null);
+                                        }}
                                     >
                                         <span>{variant.name}</span>
                                         <span className="ml-1.5 font-semibold tabular-nums">
@@ -102,11 +147,29 @@ export function DailyMenuItemCard({ item }: DailyMenuItemCardProps) {
                     </div>
                 )}
 
-                {isSoldOut && (
-                    <div className="text-muted-foreground mt-auto flex h-10 w-full items-center justify-center rounded-xl border border-dashed text-sm font-medium">
-                        Agotado
-                    </div>
-                )}
+                <div className="mt-auto space-y-2">
+                    {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
+                    {quantityInCart > 0 && activeStock !== null && (
+                        <p className="text-muted-foreground text-xs">
+                            En tu pedido: {quantityInCart}/{activeStock}
+                        </p>
+                    )}
+                    {isSoldOut ? (
+                        <div className="text-muted-foreground flex h-10 w-full items-center justify-center rounded-xl border border-dashed text-sm font-medium">
+                            Agotado
+                        </div>
+                    ) : (
+                        <Button
+                            type="button"
+                            className="w-full rounded-xl bg-orange-600 hover:bg-orange-700"
+                            disabled={!canAdd}
+                            onClick={handleAdd}
+                        >
+                            <Plus className="size-4" />
+                            {atStockLimit ? 'Máximo en carrito' : 'Agregar'}
+                        </Button>
+                    )}
+                </div>
             </div>
         </Card>
     );

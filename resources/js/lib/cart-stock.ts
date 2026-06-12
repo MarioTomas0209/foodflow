@@ -1,6 +1,10 @@
-import { type CartItem, type Category, type Product, type ProductVariant } from '@/types';
+import { findDailyMenuItem } from '@/lib/cartable-product';
+import { type CartItem, type Category, type DailyMenu } from '@/types';
 
-export function resolveMaxStock(product: Product, variant?: ProductVariant): number | null {
+export function resolveMaxStock(
+    product: { has_variants: boolean; stock: number | null },
+    variant?: { stock: number | null },
+): number | null {
     if (product.has_variants) {
         if (!variant) {
             return 0;
@@ -28,7 +32,7 @@ export function stockLimitMessage(maxStock: number | null, quantityInCart: numbe
     return null;
 }
 
-function findProduct(categories: Category[], productId: string): Product | undefined {
+function findProduct(categories: Category[], productId: string) {
     for (const category of categories) {
         const product = category.products.find((entry) => entry.id === productId);
 
@@ -42,8 +46,33 @@ function findProduct(categories: Category[], productId: string): Product | undef
 
 export function getStockForCartItem(
     categories: Category[],
-    item: Pick<CartItem, 'productId' | 'variantId'>,
+    dailyMenu: DailyMenu | null | undefined,
+    item: Pick<CartItem, 'productId' | 'variantId' | 'source'>,
 ): number | null | undefined {
+    if (item.source === 'daily') {
+        const dailyItem = findDailyMenuItem(dailyMenu, item.productId);
+
+        if (!dailyItem) {
+            return undefined;
+        }
+
+        if (dailyItem.has_variants) {
+            const variant = dailyItem.variants.find((entry) => entry.id === item.variantId);
+
+            if (!variant) {
+                return undefined;
+            }
+
+            return variant.stock;
+        }
+
+        if (item.variantId) {
+            return undefined;
+        }
+
+        return dailyItem.stock;
+    }
+
     const product = findProduct(categories, item.productId);
 
     if (!product) {
@@ -67,9 +96,13 @@ export function getStockForCartItem(
     return product.stock;
 }
 
-export function validateCartAgainstCatalog(items: CartItem[], categories: Category[]): string | null {
+export function validateCartAgainstCatalog(
+    items: CartItem[],
+    categories: Category[],
+    dailyMenu?: DailyMenu | null,
+): string | null {
     for (const item of items) {
-        const stock = getStockForCartItem(categories, item);
+        const stock = getStockForCartItem(categories, dailyMenu, item);
         const label = item.variantName ? `${item.productName} (${item.variantName})` : item.productName;
 
         if (stock === undefined) {

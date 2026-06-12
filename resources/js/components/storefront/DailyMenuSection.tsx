@@ -7,13 +7,15 @@ import {
     formatDailyMenuTimeRange,
     formatDailyMenuTitle,
 } from '@/lib/daily-menu';
-import { type DailyMenu } from '@/types';
+import { type CartableProduct, type CartableVariant, type CartSource, type DailyMenu } from '@/types';
 
 interface DailyMenuSectionProps {
     dailyMenu: DailyMenu;
+    getQuantityInCart: (productId: string, variantId: string | null, source?: CartSource) => number;
+    onAdd: (product: CartableProduct, variant?: CartableVariant) => boolean;
 }
 
-export function DailyMenuSection({ dailyMenu }: DailyMenuSectionProps) {
+export function DailyMenuSection({ dailyMenu, getQuantityInCart, onAdd }: DailyMenuSectionProps) {
     const timeRange = formatDailyMenuTimeRange(dailyMenu);
     const title = formatDailyMenuTitle(dailyMenu);
 
@@ -59,7 +61,11 @@ export function DailyMenuSection({ dailyMenu }: DailyMenuSectionProps) {
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {dailyMenu.items.map((item) => (
                     <li key={item.id}>
-                        <DailyMenuItemCard item={item} />
+                        <DailyMenuItemCard
+                            item={item}
+                            getQuantityInCart={getQuantityInCart}
+                            onAdd={onAdd}
+                        />
                     </li>
                 ))}
             </ul>

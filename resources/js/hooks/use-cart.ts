@@ -1,24 +1,30 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { canIncreaseQuantity, resolveMaxStock } from '@/lib/cart-stock';
-import { type CartItem, type Product, type ProductVariant } from '@/types';
+import { resolveCartableMaxStock } from '@/lib/cartable-product';
+import { canIncreaseQuantity } from '@/lib/cart-stock';
+import { type CartableProduct, type CartableVariant, type CartItem, type CartSource } from '@/types';
 
-function matchesItem(item: CartItem, productId: string, variantId: string | null): boolean {
-    return item.productId === productId && item.variantId === variantId;
+function matchesItem(
+    item: CartItem,
+    productId: string,
+    variantId: string | null,
+    source: CartSource,
+): boolean {
+    return item.productId === productId && item.variantId === variantId && item.source === source;
 }
 
 export function useCart(organizationId: string) {
     const [items, setItems] = useState<CartItem[]>([]);
 
     const getQuantity = useCallback(
-        (productId: string, variantId: string | null) => {
-            return items.find((item) => matchesItem(item, productId, variantId))?.quantity ?? 0;
+        (productId: string, variantId: string | null, source: CartSource = 'menu') => {
+            return items.find((item) => matchesItem(item, productId, variantId, source))?.quantity ?? 0;
         },
         [items],
     );
 
-    const addItem = useCallback((product: Product, variant?: ProductVariant): boolean => {
-        const maxStock = resolveMaxStock(product, variant);
+    const addItem = useCallback((product: CartableProduct, variant?: CartableVariant): boolean => {
+        const maxStock = resolveCartableMaxStock(product, variant);
 
         if (product.has_variants && !variant) {
             return false;
@@ -35,7 +41,7 @@ export function useCart(organizationId: string) {
         let added = false;
 
         setItems((current) => {
-            const existing = current.find((item) => matchesItem(item, product.id, variantId));
+            const existing = current.find((item) => matchesItem(item, product.id, variantId, product.source));
 
             if (existing) {
                 if (!canIncreaseQuantity(existing.quantity, existing.maxStock)) {
@@ -45,7 +51,9 @@ export function useCart(organizationId: string) {
                 added = true;
 
                 return current.map((item) =>
-                    matchesItem(item, product.id, variantId) ? { ...item, quantity: item.quantity + 1 } : item,
+                    matchesItem(item, product.id, variantId, product.source)
+                        ? { ...item, quantity: item.quantity + 1 }
+                        : item,
                 );
             }
 
@@ -66,6 +74,7 @@ export function useCart(organizationId: string) {
                     price,
                     quantity: 1,
                     maxStock,
+                    source: product.source,
                 },
             ];
         });
@@ -73,37 +82,40 @@ export function useCart(organizationId: string) {
         return added;
     }, []);
 
-    const removeItem = useCallback((productId: string, variantId: string | null) => {
-        setItems((current) => current.filter((item) => !matchesItem(item, productId, variantId)));
+    const removeItem = useCallback((productId: string, variantId: string | null, source: CartSource = 'menu') => {
+        setItems((current) => current.filter((item) => !matchesItem(item, productId, variantId, source)));
     }, []);
 
-    const incrementItem = useCallback((productId: string, variantId: string | null): boolean => {
-        let incremented = false;
+    const incrementItem = useCallback(
+        (productId: string, variantId: string | null, source: CartSource = 'menu'): boolean => {
+            let incremented = false;
 
-        setItems((current) =>
-            current.map((item) => {
-                if (!matchesItem(item, productId, variantId)) {
-                    return item;
-                }
+            setItems((current) =>
+                current.map((item) => {
+                    if (!matchesItem(item, productId, variantId, source)) {
+                        return item;
+                    }
 
-                if (!canIncreaseQuantity(item.quantity, item.maxStock)) {
-                    return item;
-                }
+                    if (!canIncreaseQuantity(item.quantity, item.maxStock)) {
+                        return item;
+                    }
 
-                incremented = true;
+                    incremented = true;
 
-                return { ...item, quantity: item.quantity + 1 };
-            }),
-        );
+                    return { ...item, quantity: item.quantity + 1 };
+                }),
+            );
 
-        return incremented;
-    }, []);
+            return incremented;
+        },
+        [],
+    );
 
-    const decrementItem = useCallback((productId: string, variantId: string | null) => {
+    const decrementItem = useCallback((productId: string, variantId: string | null, source: CartSource = 'menu') => {
         setItems((current) =>
             current
                 .map((item) =>
-                    matchesItem(item, productId, variantId) ? { ...item, quantity: item.quantity - 1 } : item,
+                    matchesItem(item, productId, variantId, source) ? { ...item, quantity: item.quantity - 1 } : item,
                 )
                 .filter((item) => item.quantity > 0),
         );

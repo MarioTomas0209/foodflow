@@ -5,15 +5,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { stockLimitMessage } from '@/lib/cart-stock';
+import { productToCartable, productVariantToCartable } from '@/lib/cartable-product';
 import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
-import { type Product, type ProductVariant } from '@/types';
+import { type CartableProduct, type CartableVariant, type Product } from '@/types';
 
 interface ProductCardProps {
     product: Product;
     categoryAvailable?: boolean;
-    getQuantityInCart: (productId: string, variantId: string | null) => number;
-    onAdd: (product: Product, variant?: ProductVariant) => boolean;
+    getQuantityInCart: (productId: string, variantId: string | null, source?: 'menu' | 'daily') => number;
+    onAdd: (product: CartableProduct, variant?: CartableVariant) => boolean;
 }
 
 function isInStock(stock: number | null): boolean {
@@ -33,7 +34,7 @@ export function ProductCard({ product, categoryAvailable = true, getQuantityInCa
     const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
     const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId);
-    const quantityInCart = getQuantityInCart(product.id, product.has_variants ? selectedVariantId : null);
+    const quantityInCart = getQuantityInCart(product.id, product.has_variants ? selectedVariantId : null, 'menu');
     const hasAvailableVariants = product.variants.some((variant) => isInStock(variant.stock));
     const isSoldOut = product.has_variants ? !hasAvailableVariants : product.stock === 0;
 
@@ -64,8 +65,11 @@ export function ProductCard({ product, categoryAvailable = true, getQuantityInCa
             return;
         }
 
+        const cartProduct = productToCartable(product);
         const added =
-            product.has_variants && selectedVariant ? onAdd(product, selectedVariant) : onAdd(product);
+            product.has_variants && selectedVariant
+                ? onAdd(cartProduct, productVariantToCartable(selectedVariant))
+                : onAdd(cartProduct);
 
         if (!added) {
             setLimitMessage(stockLimitMessage(activeStock, quantityInCart));

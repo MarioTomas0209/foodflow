@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Public;
 use App\Events\NewOrderReceived;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerAddress;
+use App\Models\DailyMenuItem;
 use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
@@ -128,8 +129,9 @@ class OrderController extends Controller
             'address_label' => ['nullable', 'string', 'max:255'],
             'payment_method' => ['required', Rule::in(['cash', 'transfer'])],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', Rule::exists('products', 'id')],
-            'items.*.product_variant_id' => ['nullable', Rule::exists('product_variants', 'id')],
+            'items.*.source' => ['nullable', Rule::in(['menu', 'daily'])],
+            'items.*.product_id' => ['required', 'string'],
+            'items.*.product_variant_id' => ['nullable', 'string'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -146,7 +148,15 @@ class OrderController extends Controller
             $validated['delivery_maps_url'] = $savedAddress->maps_url;
         }
 
-        $productIds = collect($validated['items'])->pluck('product_id')->unique()->values();
+        $menuItems = collect($validated['items'])
+            ->filter(fn (array $item) => ($item['source'] ?? 'menu') === 'menu')
+            ->values();
+
+        $dailyItems = collect($validated['items'])
+            ->filter(fn (array $item) => ($item['source'] ?? 'menu') === 'daily')
+            ->values();
+
+        $productIds = $menuItems->pluck('product_id')->unique()->values();
 
         $products = Product::query()
             ->where('organization_id', $organization->id)
@@ -162,77 +172,48 @@ class OrderController extends Controller
             ]);
         }
 
+        $todayMenu = $organization->todayMenu();
+        $dailyMenuItems = collect();
+
+        if ($dailyItems->isNotEmpty()) {
+            if ($todayMenu === null) {
+                throw ValidationException::withMessages([
+                    'items' => 'El menú del día no está disponible.',
+                ]);
+            }
+
+            $dailyItemIds = $dailyItems->pluck('product_id')->unique()->values();
+
+            $dailyMenuItems = DailyMenuItem::query()
+                ->where('daily_menu_id', $todayMenu->id)
+                ->whereIn('id', $dailyItemIds)
+                ->with('variants')
+                ->get()
+                ->keyBy('id');
+
+            if ($dailyMenuItems->count() !== $dailyItemIds->count()) {
+                throw ValidationException::withMessages([
+                    'items' => 'Uno o más platillos del menú del día no están disponibles.',
+                ]);
+            }
+        }
+
         $resolvedItems = [];
         $subtotal = 0;
 
         foreach ($validated['items'] as $index => $item) {
-            /** @var Product $product */
-            $product = $products->get($item['product_id']);
+            $source = $item['source'] ?? 'menu';
 
-            if ($product->has_variants) {
-                if (empty($item['product_variant_id'])) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.product_variant_id" => 'Debes seleccionar una variante.',
-                    ]);
-                }
-
-                $variant = $product->variants->firstWhere('id', $item['product_variant_id']);
-
-                if (! $variant) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.product_variant_id" => 'La variante seleccionada no está disponible.',
-                    ]);
-                }
-
-                if ($variant->stock !== null && $variant->stock < $item['quantity']) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.quantity" => "Stock insuficiente para {$product->name} ({$variant->name}).",
-                    ]);
-                }
-
-                $unitPrice = (float) $variant->price;
-                $variantName = $variant->name;
-                $variantId = $variant->id;
-                $stockTarget = $variant;
+            if ($source === 'daily') {
+                $resolved = $this->resolveDailyMenuItem($dailyMenuItems, $item, $index);
             } else {
-                if (! empty($item['product_variant_id'])) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.product_variant_id" => 'Este producto no tiene variantes.',
-                    ]);
-                }
-
-                if ($product->stock !== null && $product->stock < $item['quantity']) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.quantity" => "Stock insuficiente para {$product->name}.",
-                    ]);
-                }
-
-                if ($product->stock === 0) {
-                    throw ValidationException::withMessages([
-                        "items.{$index}.product_id" => "{$product->name} está agotado.",
-                    ]);
-                }
-
-                $unitPrice = (float) $product->price;
-                $variantName = null;
-                $variantId = null;
-                $stockTarget = $product;
+                /** @var Product $product */
+                $product = $products->get($item['product_id']);
+                $resolved = $this->resolveMenuProduct($product, $item, $index);
             }
 
-            $lineSubtotal = round($unitPrice * $item['quantity'], 2);
-            $subtotal += $lineSubtotal;
-
-            $resolvedItems[] = [
-                'product_id' => $product->id,
-                'product_variant_id' => $variantId,
-                'product_name' => $product->name,
-                'variant_name' => $variantName,
-                'product_image' => $product->imagePublicUrl(),
-                'unit_price' => $unitPrice,
-                'quantity' => $item['quantity'],
-                'subtotal' => $lineSubtotal,
-                'stock_target' => $stockTarget,
-            ];
+            $subtotal += $resolved['subtotal'];
+            $resolvedItems[] = $resolved;
         }
 
         $deliveryFee = 0;
@@ -294,6 +275,8 @@ class OrderController extends Controller
                 $order->items()->create([
                     'product_id' => $item['product_id'],
                     'product_variant_id' => $item['product_variant_id'],
+                    'daily_menu_item_id' => $item['daily_menu_item_id'],
+                    'daily_menu_item_variant_id' => $item['daily_menu_item_variant_id'],
                     'product_name' => $item['product_name'],
                     'variant_name' => $item['variant_name'],
                     'product_image' => $item['product_image'],
@@ -332,6 +315,156 @@ class OrderController extends Controller
         broadcast(new NewOrderReceived($order))->toOthers();
 
         return redirect()->route('storefront.order.confirmation', $order);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    private function resolveMenuProduct(Product $product, array $item, int $index): array
+    {
+        if ($product->has_variants) {
+            if (empty($item['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'Debes seleccionar una variante.',
+                ]);
+            }
+
+            $variant = $product->variants->firstWhere('id', $item['product_variant_id']);
+
+            if (! $variant) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'La variante seleccionada no está disponible.',
+                ]);
+            }
+
+            if ($variant->stock !== null && $variant->stock < $item['quantity']) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" => "Stock insuficiente para {$product->name} ({$variant->name}).",
+                ]);
+            }
+
+            $unitPrice = (float) $variant->price;
+            $variantName = $variant->name;
+            $variantId = $variant->id;
+            $stockTarget = $variant;
+        } else {
+            if (! empty($item['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'Este producto no tiene variantes.',
+                ]);
+            }
+
+            if ($product->stock !== null && $product->stock < $item['quantity']) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" => "Stock insuficiente para {$product->name}.",
+                ]);
+            }
+
+            if ($product->stock === 0) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => "{$product->name} está agotado.",
+                ]);
+            }
+
+            $unitPrice = (float) $product->price;
+            $variantName = null;
+            $variantId = null;
+            $stockTarget = $product;
+        }
+
+        $lineSubtotal = round($unitPrice * $item['quantity'], 2);
+
+        return [
+            'product_id' => $product->id,
+            'product_variant_id' => $variantId,
+            'daily_menu_item_id' => null,
+            'daily_menu_item_variant_id' => null,
+            'product_name' => $product->name,
+            'variant_name' => $variantName,
+            'product_image' => $product->imagePublicUrl(),
+            'unit_price' => $unitPrice,
+            'quantity' => $item['quantity'],
+            'subtotal' => $lineSubtotal,
+            'stock_target' => $stockTarget,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<string, DailyMenuItem>  $dailyMenuItems
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    private function resolveDailyMenuItem($dailyMenuItems, array $item, int $index): array
+    {
+        /** @var DailyMenuItem $dailyItem */
+        $dailyItem = $dailyMenuItems->get($item['product_id']);
+
+        if ($dailyItem->has_variants) {
+            if (empty($item['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'Debes seleccionar una variante.',
+                ]);
+            }
+
+            $variant = $dailyItem->variants->firstWhere('id', $item['product_variant_id']);
+
+            if (! $variant) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'La variante seleccionada no está disponible.',
+                ]);
+            }
+
+            if ($variant->stock !== null && $variant->stock < $item['quantity']) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" => "Stock insuficiente para {$dailyItem->name} ({$variant->name}).",
+                ]);
+            }
+
+            $unitPrice = (float) $variant->price;
+            $variantName = $variant->name;
+            $variantId = $variant->id;
+            $stockTarget = $variant;
+        } else {
+            if (! empty($item['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_variant_id" => 'Este platillo no tiene variantes.',
+                ]);
+            }
+
+            if ($dailyItem->stock !== null && $dailyItem->stock < $item['quantity']) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" => "Stock insuficiente para {$dailyItem->name}.",
+                ]);
+            }
+
+            if ($dailyItem->stock === 0) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => "{$dailyItem->name} está agotado.",
+                ]);
+            }
+
+            $unitPrice = (float) $dailyItem->price;
+            $variantName = null;
+            $variantId = null;
+            $stockTarget = $dailyItem;
+        }
+
+        $lineSubtotal = round($unitPrice * $item['quantity'], 2);
+
+        return [
+            'product_id' => null,
+            'product_variant_id' => null,
+            'daily_menu_item_id' => $dailyItem->id,
+            'daily_menu_item_variant_id' => $variantId,
+            'product_name' => $dailyItem->name,
+            'variant_name' => $variantName,
+            'product_image' => $dailyItem->imagePublicUrl(),
+            'unit_price' => $unitPrice,
+            'quantity' => $item['quantity'],
+            'subtotal' => $lineSubtotal,
+            'stock_target' => $stockTarget,
+        ];
     }
 
     public function confirmation(Order $order): Response

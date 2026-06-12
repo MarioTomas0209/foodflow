@@ -22,7 +22,7 @@ import { requestGeolocation } from '@/lib/geolocation';
 import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
 import PublicLayout from '@/layouts/PublicLayout';
 import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
-import { type CartItem, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
+import { type CartItem, type CartSource, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
 
 const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
 
@@ -68,6 +68,7 @@ export default function Checkout({ organization, zones, customer, addresses }: C
             product_id: string;
             product_variant_id: string | null;
             quantity: number;
+            source: CartSource;
         }>,
     });
 
@@ -242,6 +243,7 @@ export default function Checkout({ organization, zones, customer, addresses }: C
                 product_id: item.productId,
                 product_variant_id: item.variantId,
                 quantity: item.quantity,
+                source: item.source ?? 'menu',
             })),
             ...(customer
                 ? {
@@ -812,7 +814,7 @@ export default function Checkout({ organization, zones, customer, addresses }: C
                         <ul className="space-y-2">
                             {cartItems.map((item) => (
                                 <li
-                                    key={`${item.productId}:${item.variantId ?? 'base'}`}
+                                    key={`${item.source}:${item.productId}:${item.variantId ?? 'base'}`}
                                     className="flex items-start gap-3 text-sm"
                                 >
                                     <ProductThumbnail

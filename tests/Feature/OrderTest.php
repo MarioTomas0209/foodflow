@@ -4,6 +4,7 @@ use App\Events\NewOrderReceived;
 use App\Models\Category;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
+use App\Models\DailyMenuItem;
 use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
@@ -796,4 +797,70 @@ test('orders with saved address_id do not create duplicate addresses', function 
         'customer_id' => $customer->id,
         'delivery_address' => 'Av. Central 100',
     ]);
+});
+
+test('guests can place an order with daily menu items', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Menú del día pedidos',
+        'slug' => 'menu-dia-pedidos',
+        'status' => 'active',
+    ]);
+
+    $menu = \App\Models\DailyMenu::create([
+        'organization_id' => $organization->id,
+        'date' => today(),
+        'is_active' => true,
+    ]);
+
+    $dailyItem = DailyMenuItem::create([
+        'daily_menu_id' => $menu->id,
+        'name' => 'Sopa del día',
+        'price' => 55,
+        'stock' => 5,
+        'has_variants' => false,
+        'sort_order' => 0,
+    ]);
+
+    $response = $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Carla',
+        'customer_phone' => '5512349999',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'source' => 'daily',
+                'product_id' => $dailyItem->id,
+                'product_variant_id' => null,
+                'quantity' => 2,
+            ],
+        ],
+    ]);
+
+    $order = Order::query()->first();
+
+    expect($order)->not->toBeNull();
+
+    $response->assertRedirect(route('storefront.order.confirmation', $order));
+
+    $this->assertDatabaseHas('orders', [
+        'id' => $order->id,
+        'subtotal' => '110.00',
+        'total' => '110.00',
+    ]);
+
+    $this->assertDatabaseHas('order_items', [
+        'order_id' => $order->id,
+        'daily_menu_item_id' => $dailyItem->id,
+        'product_id' => null,
+        'product_name' => 'Sopa del día',
+        'unit_price' => '55.00',
+        'quantity' => 2,
+        'subtotal' => '110.00',
+    ]);
+
+    expect($dailyItem->fresh()->stock)->toBe(3);
 });
