@@ -28,6 +28,10 @@ export function buildMapsUrl(latitude: number | string, longitude: number | stri
     return `https://www.google.com/maps?q=${latitude},${longitude}`;
 }
 
+export function buildMapsSearchUrl(query: string): string {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 export function getOrderDeliveryMapsUrl(order: {
     type: 'pickup' | 'delivery';
     delivery_maps_url?: string | null;
