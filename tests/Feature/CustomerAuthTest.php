@@ -89,6 +89,44 @@ test('customer login fails with invalid credentials', function () {
     $this->assertGuest('customer');
 });
 
+test('guests are redirected to login when visiting checkout', function () {
+    $organization = activeOrganizationForCustomerAuth();
+
+    $this->get(route('storefront.checkout', $organization->slug))
+        ->assertRedirect(route('storefront.login', $organization->slug));
+});
+
+test('customers are redirected to checkout after login when that was the intended page', function () {
+    $organization = activeOrganizationForCustomerAuth();
+
+    Customer::create([
+        'name' => 'Ana Cliente',
+        'phone' => '9631112233',
+        'password' => 'secreta123',
+    ]);
+
+    $this->get(route('storefront.checkout', $organization->slug))
+        ->assertRedirect(route('storefront.login', $organization->slug));
+
+    $this->post(route('storefront.login.store', $organization->slug), [
+        'phone' => '9631112233',
+        'password' => 'secreta123',
+    ])->assertRedirect(route('storefront.checkout', $organization->slug));
+});
+
+test('guests cannot place orders', function () {
+    $organization = activeOrganizationForCustomerAuth();
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Invitado',
+        'customer_phone' => '5512345678',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [],
+    ])->assertRedirect(route('storefront.login', $organization->slug));
+});
+
 test('customers can logout without affecting web guard', function () {
     $organization = activeOrganizationForCustomerAuth();
     $owner = User::factory()->create();

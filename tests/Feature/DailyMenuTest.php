@@ -162,7 +162,7 @@ test('daily menu orders are accepted before opening hours', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Ana',
         'customer_phone' => '5512345678',
@@ -210,7 +210,7 @@ test('daily menu orders are rejected outside configured hours', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Carla',
         'customer_phone' => '5512349999',

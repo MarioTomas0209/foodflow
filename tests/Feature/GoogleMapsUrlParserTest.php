@@ -46,7 +46,7 @@ test('storefront resolves shared google maps links', function () {
         'status' => 'active',
     ]);
 
-    $this->get(route('storefront.maps.resolve', [
+    $this->asCustomer()->get(route('storefront.maps.resolve', [
         'slug' => $organization->slug,
         'url' => 'https://maps.app.goo.gl/MpqTqd8Hd2ADujCk7',
     ]))
@@ -71,7 +71,7 @@ test('storefront accepts share links even when coordinates cannot be extracted',
         'status' => 'active',
     ]);
 
-    $this->get(route('storefront.maps.resolve', [
+    $this->asCustomer()->get(route('storefront.maps.resolve', [
         'slug' => $organization->slug,
         'url' => 'https://maps.app.goo.gl/QmksuekEcDxhsjfq9',
     ]))

@@ -121,6 +121,12 @@ export default function Storefront({ organization, daily_menu, categories }: Sto
             items: cart.items,
         });
         setCartOpen(false);
+
+        if (!customer) {
+            router.visit(namedRoute('storefront.login', organization.slug));
+            return;
+        }
+
         router.visit(namedRoute('storefront.checkout', organization.slug));
     };
 

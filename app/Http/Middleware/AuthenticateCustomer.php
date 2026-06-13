@@ -14,7 +14,7 @@ class AuthenticateCustomer
     public function handle(Request $request, Closure $next): Response
     {
         if (! auth()->guard('customer')->check()) {
-            return redirect()->route('storefront.login', $request->route('slug'));
+            return redirect()->guest(route('storefront.login', $request->route('slug')));
         }
 
         return $next($request);

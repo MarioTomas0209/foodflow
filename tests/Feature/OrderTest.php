@@ -13,7 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('guests can view checkout page for active organization', function () {
+test('guests are redirected to login when visiting checkout', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
@@ -24,19 +24,10 @@ test('guests can view checkout page for active organization', function () {
     ]);
 
     $this->get(route('storefront.checkout', $organization->slug))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('Public/Checkout')
-            ->where('organization.slug', 'taqueria-checkout')
-            ->where('customer', null)
-            ->has('addresses', 0)
-            ->has('zones', 0)
-            ->has('cart_context.categories')
-            ->has('cart_context.product_categories')
-        );
+        ->assertRedirect(route('storefront.login', $organization->slug));
 });
 
-test('guests can place an order with server side pricing', function () {
+test('authenticated customers can place an order with server side pricing', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
@@ -65,7 +56,7 @@ test('guests can place an order with server side pricing', function () {
         'sort_order' => 0,
     ]);
 
-    $response = $this->post(route('storefront.orders.store', $organization->slug), [
+    $response = $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Juan Pérez',
         'customer_phone' => '5512345678',
@@ -111,7 +102,7 @@ test('guests can place an order with server side pricing', function () {
     expect($product->fresh()->stock)->toBe(8);
 });
 
-test('guests see order confirmation page after placing order', function () {
+test('authenticated customers see order confirmation page after placing order', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
@@ -150,7 +141,7 @@ test('guests see order confirmation page after placing order', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Ana',
         'customer_phone' => '5599998888',
@@ -220,7 +211,7 @@ test('order store rejects insufficient stock', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Pedro',
         'customer_phone' => '5511112222',
@@ -263,7 +254,7 @@ test('delivery orders require a valid delivery zone', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Luis',
         'customer_phone' => '5511223344',
@@ -319,7 +310,7 @@ test('delivery orders accept manual zone selection without coordinates', functio
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Carlos',
         'customer_phone' => '5511445566',
@@ -387,7 +378,7 @@ test('delivery orders store the pasted google maps share link', function () {
 
     $mapsUrl = 'https://maps.app.goo.gl/MpqTqd8Hd2ADujCk7';
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Rosa',
         'customer_phone' => '5511667788',
@@ -464,7 +455,7 @@ test('delivery orders prefer coordinates over manual zone when both are provided
         'sort_order' => 1,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Elena',
         'customer_phone' => '5511556677',
@@ -529,7 +520,7 @@ test('delivery orders reject addresses outside coverage zones', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'María',
         'customer_phone' => '5511334455',
@@ -589,7 +580,7 @@ test('delivery orders reject manual zone when coordinates are outside coverage',
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'María',
         'customer_phone' => '5511334455',
@@ -641,7 +632,7 @@ test('placing an order broadcasts NewOrderReceived on the organization channel',
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Cliente Broadcast',
         'customer_phone' => '5512345678',
@@ -862,7 +853,7 @@ test('orders with saved address_id do not create duplicate addresses', function 
     ]);
 });
 
-test('guests can place an order with daily menu items', function () {
+test('authenticated customers can place an order with daily menu items', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
@@ -887,7 +878,7 @@ test('guests can place an order with daily menu items', function () {
         'sort_order' => 0,
     ]);
 
-    $response = $this->post(route('storefront.orders.store', $organization->slug), [
+    $response = $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Carla',
         'customer_phone' => '5512349999',
@@ -928,7 +919,7 @@ test('guests can place an order with daily menu items', function () {
     expect($dailyItem->fresh()->stock)->toBe(3);
 });
 
-test('guests can place a scheduled preorder for informative categories outside hours', function () {
+test('authenticated customers can place a scheduled preorder for informative categories outside hours', function () {
     \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-06-09 12:00:00'));
 
     $user = User::factory()->create();
@@ -960,7 +951,7 @@ test('guests can place a scheduled preorder for informative categories outside h
         'sort_order' => 0,
     ]);
 
-    $response = $this->post(route('storefront.orders.store', $organization->slug), [
+    $response = $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Roberto',
         'customer_phone' => '5511223344',
@@ -1021,7 +1012,7 @@ test('preorder rejects scheduled time outside category window', function () {
         'sort_order' => 0,
     ]);
 
-    $this->post(route('storefront.orders.store', $organization->slug), [
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
         'organization_id' => $organization->id,
         'customer_name' => 'Laura',
         'customer_phone' => '5511334455',
