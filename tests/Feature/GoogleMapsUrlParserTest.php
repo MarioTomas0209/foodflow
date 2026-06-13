@@ -89,8 +89,8 @@ test('google maps url parser resolves mobile share links without coordinates in 
             ->push('', 302, [
                 'Location' => 'https://www.google.com/maps/place/El+Arenal/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df!18m1!1e1',
             ])
-            ->push('<link href="/maps/preview/place?pb=%212d-92.1337856%213d16.2430976" />', 200),
-        'www.google.com/*' => Http::response('<link href="/maps/preview/place?pb=%212d-92.1337856%213d16.2430976" />', 200),
+            ->push('<script>"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0],[1024,768],13.1]</script>', 200),
+        'www.google.com/*' => Http::response('<script>"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0],[1024,768],13.1]</script>', 200),
     ]);
 
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/vMnkbZ83nMbpzusD7?g_st=ac');

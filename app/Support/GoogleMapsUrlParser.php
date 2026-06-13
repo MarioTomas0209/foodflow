@@ -4,6 +4,7 @@ namespace App\Support;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class GoogleMapsUrlParser
 {
@@ -14,6 +15,8 @@ class GoogleMapsUrlParser
         'www.google.com',
         'google.com',
     ];
+
+    private const BROWSER_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36';
 
     public static function isShareUrl(string $input): bool
     {
@@ -39,6 +42,8 @@ class GoogleMapsUrlParser
             return null;
         }
 
+        $url = self::normalizeShareUrl($url);
+
         $parsed = self::parseUrlString($url);
 
         if ($parsed !== null) {
@@ -49,13 +54,47 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        return self::fetchCoordinatesFromShareUrl($url);
+        $parsed = self::fetchCoordinatesManually($url);
+
+        if ($parsed !== null) {
+            return $parsed;
+        }
+
+        return self::fetchFollowingRedirects($url);
     }
 
     /**
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function fetchCoordinatesFromShareUrl(string $url): ?array
+    private static function fetchFollowingRedirects(string $url): ?array
+    {
+        try {
+            $response = self::httpClient(followRedirects: true)->get($url);
+            $effectiveUrl = (string) ($response->effectiveUri() ?? $url);
+
+            $parsed = self::parseUrlString($effectiveUrl);
+
+            if ($parsed !== null) {
+                return $parsed;
+            }
+
+            if ($response->successful()) {
+                return self::parseEmbeddedCoords($response->body());
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Google Maps auto-redirect fetch failed', [
+                'url' => $url,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function fetchCoordinatesManually(string $url): ?array
     {
         $current = $url;
 
@@ -66,7 +105,12 @@ class GoogleMapsUrlParser
 
             try {
                 $response = self::httpClient()->get($current);
-            } catch (\Throwable) {
+            } catch (\Throwable $exception) {
+                Log::warning('Google Maps manual fetch failed', [
+                    'url' => $current,
+                    'error' => $exception->getMessage(),
+                ]);
+
                 break;
             }
 
@@ -100,6 +144,25 @@ class GoogleMapsUrlParser
         }
 
         return null;
+    }
+
+    private static function normalizeShareUrl(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false) {
+            return $url;
+        }
+
+        $host = strtolower($parts['host'] ?? '');
+
+        if ($host === 'maps.app.goo.gl' || $host === 'goo.gl') {
+            $path = $parts['path'] ?? '';
+
+            return ($parts['scheme'] ?? 'https').'://'.$host.$path;
+        }
+
+        return $url;
     }
 
     private static function normalizeUrl(string $input): ?string
@@ -178,25 +241,31 @@ class GoogleMapsUrlParser
      */
     private static function parseEmbeddedCoords(string $content): ?array
     {
+        $candidates = [$content, urldecode($content)];
+
         $patterns = [
             ['regex' => '/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2],
             ['regex' => '/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1],
             ['regex' => '/%213d(-?\d+(?:\.\d+)?)%214d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2],
             ['regex' => '/%212d(-?\d+(?:\.\d+)?)%213d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1],
+            ['regex' => '/"mx",\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\]/', 'lat' => 3, 'lng' => 2],
+            ['regex' => '/\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\],\[0,0,0\]/', 'lat' => 3, 'lng' => 2],
         ];
 
-        foreach ($patterns as $pattern) {
-            if (! preg_match($pattern['regex'], $content, $matches)) {
-                continue;
-            }
+        foreach ($candidates as $candidate) {
+            foreach ($patterns as $pattern) {
+                if (! preg_match($pattern['regex'], $candidate, $matches)) {
+                    continue;
+                }
 
-            $coords = self::coordsFromPair(
-                (float) $matches[$pattern['lat']],
-                (float) $matches[$pattern['lng']],
-            );
+                $coords = self::coordsFromPair(
+                    (float) $matches[$pattern['lat']],
+                    (float) $matches[$pattern['lng']],
+                );
 
-            if ($coords !== null) {
-                return $coords;
+                if ($coords !== null) {
+                    return $coords;
+                }
             }
         }
 
@@ -261,11 +330,22 @@ class GoogleMapsUrlParser
         return $location;
     }
 
-    private static function httpClient(): PendingRequest
+    private static function httpClient(bool $followRedirects = false): PendingRequest
     {
-        $client = Http::timeout(10)->withOptions(['allow_redirects' => false]);
+        $client = Http::timeout(15)
+            ->withHeaders([
+                'User-Agent' => self::BROWSER_USER_AGENT,
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'es-MX,es;q=0.9',
+            ])
+            ->retry(2, 200)
+            ->withOptions([
+                'allow_redirects' => $followRedirects ? ['max' => 10, 'strict' => false, 'referer' => true] : false,
+            ]);
 
-        if (app()->environment('local')) {
+        $shouldVerify = (bool) config('services.google_maps.http_verify', true);
+
+        if (! $shouldVerify || app()->environment('local')) {
             $client = $client->withoutVerifying();
         }
 

@@ -137,6 +137,12 @@ export function parseGoogleMapsUrl(input: string): ParsedCoords | null {
         return coordsFromPair(Number(altPlaceMatch[2]), Number(altPlaceMatch[1]));
     }
 
+    const mxMatch = input.match(/"mx",\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\]/);
+
+    if (mxMatch) {
+        return coordsFromPair(Number(mxMatch[3]), Number(mxMatch[2]));
+    }
+
     const atMatch = url.pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
 
     if (atMatch) {
@@ -230,12 +236,16 @@ export async function resolveGoogleMapsUrl(input: string, endpoint: string): Pro
     try {
         const params = new URLSearchParams({ url: trimmed });
         const response = await fetch(`${endpoint}?${params.toString()}`, {
+            credentials: 'same-origin',
             headers: {
                 Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
             },
         });
 
         if (!response.ok) {
+            console.warn('No se pudo resolver el enlace de Google Maps.', response.status);
+
             return {
                 latitude: null,
                 longitude: null,

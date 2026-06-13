@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'google_maps' => [
+        'http_verify' => env('GOOGLE_MAPS_HTTP_VERIFY', true),
+    ],
+
 ];

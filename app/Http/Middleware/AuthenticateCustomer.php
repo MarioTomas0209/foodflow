@@ -14,6 +14,10 @@ class AuthenticateCustomer
     public function handle(Request $request, Closure $next): Response
     {
         if (! auth()->guard('customer')->check()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+
             return redirect()->guest(route('storefront.login', $request->route('slug')));
         }
 
