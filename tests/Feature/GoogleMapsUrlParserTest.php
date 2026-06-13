@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Http;
 test('google maps url parser reads coordinates from direct input', function () {
     expect(GoogleMapsUrlParser::parse('16.2520, -92.1350'))
         ->toBe(['latitude' => 16.2520, 'longitude' => -92.1350]);
-
-    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('exact');
 });
 
 test('google maps url parser reads coordinates from full maps url', function () {
@@ -29,7 +27,6 @@ test('google maps url parser resolves short share links', function () {
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/MpqTqd8Hd2ADujCk7');
 
     expect($coords)->toBe(['latitude' => 16.2521, 'longitude' => -92.1351]);
-    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('exact');
 });
 
 test('storefront resolves shared google maps links', function () {
@@ -57,7 +54,6 @@ test('storefront resolves shared google maps links', function () {
         ->assertJson([
             'latitude' => 16.2520,
             'longitude' => -92.1350,
-            'resolution_quality' => 'exact',
         ]);
 });
 
@@ -134,7 +130,6 @@ test('google maps url parser geocodes place name when html has no usable coordin
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/vMnkbZ83nMbpzusD7?g_st=ac');
 
     expect($coords)->toBe(['latitude' => 16.25, 'longitude' => -92.13]);
-    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('approximate');
 });
 
 test('google maps url parser rejects datacenter html coordinates outside delivery area', function () {

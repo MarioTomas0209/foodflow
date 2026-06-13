@@ -8,7 +8,6 @@ export interface ResolvedMapsLink {
     longitude: number | null;
     mapsUrl: string;
     zoneId?: string | null;
-    resolutionQuality?: 'exact' | 'approximate';
 }
 
 function isValidCoords(latitude: number, longitude: number): boolean {
@@ -228,7 +227,6 @@ export async function resolveGoogleMapsUrl(input: string, endpoint: string): Pro
             latitude: local.latitude,
             longitude: local.longitude,
             mapsUrl: trimmed,
-            resolutionQuality: 'exact',
         };
     }
 
@@ -261,17 +259,15 @@ export async function resolveGoogleMapsUrl(input: string, endpoint: string): Pro
             longitude?: number | null;
             zone_id?: string | null;
             maps_url?: string;
-            resolution_quality?: 'exact' | 'approximate';
         };
 
         const latitude = data.latitude ?? null;
         const longitude = data.longitude ?? null;
         const mapsUrl = data.maps_url?.trim() || trimmed;
         const zoneId = data.zone_id ?? null;
-        const resolutionQuality = data.resolution_quality ?? 'approximate';
 
         if (latitude !== null && longitude !== null && isValidCoords(latitude, longitude)) {
-            return { latitude, longitude, mapsUrl, zoneId, resolutionQuality };
+            return { latitude, longitude, mapsUrl, zoneId };
         }
 
         return {

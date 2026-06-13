@@ -38,8 +38,6 @@ class GoogleMapsUrlParser
         'bias_radius_km' => 20.0,
     ];
 
-    private static string $resolutionQuality = 'approximate';
-
     public static function isShareUrl(string $input): bool
     {
         $url = self::normalizeUrl(trim($input));
@@ -55,16 +53,6 @@ class GoogleMapsUrlParser
         return self::featureIdToCidCandidates($featureId);
     }
 
-    public static function resolutionQuality(): string
-    {
-        return self::$resolutionQuality;
-    }
-
-    private static function markExactResolution(): void
-    {
-        self::$resolutionQuality = 'exact';
-    }
-
     /**
      * @param  array{
      *   bias_lat?: float,
@@ -77,7 +65,6 @@ class GoogleMapsUrlParser
     public static function parse(string $input, ?array $context = null): ?array
     {
         $geocodeContext = self::resolveGeocodeContext($context);
-        self::$resolutionQuality = 'approximate';
         $trimmed = trim($input);
 
         if ($trimmed === '') {
@@ -95,8 +82,6 @@ class GoogleMapsUrlParser
         $parsed = self::parseUrlString($url);
 
         if ($parsed !== null) {
-            self::markExactResolution();
-
             return $parsed;
         }
 
@@ -128,8 +113,6 @@ class GoogleMapsUrlParser
                 $parsed = self::parseUrlString($effectiveUrl);
 
                 if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
-                    self::markExactResolution();
-
                     return $parsed;
                 }
 
@@ -137,8 +120,6 @@ class GoogleMapsUrlParser
                     $parsed = self::parseEmbeddedCoords($response->body(), $context);
 
                     if ($parsed !== null) {
-                        self::markExactResolution();
-
                         return $parsed;
                     }
                 }
@@ -222,8 +203,6 @@ class GoogleMapsUrlParser
             $parsed = self::parseUrlString($current);
 
             if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
-                self::markExactResolution();
-
                 return [
                     'coords' => $parsed,
                     'last_google_maps_url' => $lastGoogleMapsUrl,
@@ -234,8 +213,6 @@ class GoogleMapsUrlParser
                 $parsed = self::parseEmbeddedCoords($response->body(), $context);
 
                 if ($parsed !== null) {
-                    self::markExactResolution();
-
                     return [
                         'coords' => $parsed,
                         'last_google_maps_url' => $lastGoogleMapsUrl,
@@ -259,8 +236,6 @@ class GoogleMapsUrlParser
                 $parsed = self::parseUrlString($resolvedLocation);
 
                 if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
-                    self::markExactResolution();
-
                     return [
                         'coords' => $parsed,
                         'last_google_maps_url' => $lastGoogleMapsUrl,

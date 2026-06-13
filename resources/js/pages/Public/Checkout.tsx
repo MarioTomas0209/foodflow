@@ -167,21 +167,10 @@ function ZoneSelectField({
 function DeliveryZoneMessages({
     hasCoords,
     detectedZone,
-    isApproximateLocation,
 }: {
     hasCoords: boolean;
     detectedZone: Zone | null;
-    isApproximateLocation?: boolean;
 }) {
-    if (hasCoords && detectedZone && isApproximateLocation) {
-        return (
-            <p className="text-amber-700 text-sm dark:text-amber-400">
-                Ubicación aproximada del enlace. Sugerimos {detectedZone.name}, pero confirma tu zona para que el
-                costo de envío sea correcto.
-            </p>
-        );
-    }
-
     if (hasCoords && detectedZone) {
         return (
             <p className="text-sm text-green-700 dark:text-green-400">
@@ -227,7 +216,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
     const [mapsLinkInput, setMapsLinkInput] = useState('');
     const [mapsLinkError, setMapsLinkError] = useState<string | null>(null);
     const [mapsLinkResolving, setMapsLinkResolving] = useState(false);
-    const [mapsResolutionQuality, setMapsResolutionQuality] = useState<'exact' | 'approximate' | null>(null);
     const [useCustomAddress, setUseCustomAddress] = useState(addresses.length === 0);
 
     const { data, setData, post, processing, errors, transform } = useForm({
@@ -275,7 +263,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
                 address_label: '',
             }));
             setMapsLinkInput(address.maps_url ?? '');
-            setMapsResolutionQuality(null);
             setLocationStatus(lat !== null && lng !== null || address.maps_url ? 'success' : 'idle');
             setLocationError(null);
             setMapsLinkError(null);
@@ -299,20 +286,13 @@ export default function Checkout({ organization, zones, customer, addresses, car
             address_label: '',
         }));
         setMapsLinkInput('');
-        setMapsResolutionQuality(null);
         setLocationStatus('idle');
         setLocationError(null);
         setMapsLinkError(null);
     }, [setData]);
 
     const applyCoordinates = useCallback(
-        (
-            latitude: number | null,
-            longitude: number | null,
-            mapsUrl: string | null = null,
-            zoneId: string | null = null,
-            resolutionQuality: 'exact' | 'approximate' | null = null,
-        ) => {
+        (latitude: number | null, longitude: number | null, mapsUrl: string | null = null, zoneId: string | null = null) => {
             const zone =
                 zoneId !== null && zoneId !== ''
                     ? (zones.find((candidate) => candidate.id === zoneId) ?? null)
@@ -330,7 +310,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
             if (mapsUrl) {
                 setMapsLinkInput(mapsUrl);
             }
-            setMapsResolutionQuality(resolutionQuality);
             setLocationStatus(latitude !== null && longitude !== null ? 'success' : mapsUrl ? 'success' : 'idle');
             setLocationError(null);
             setMapsLinkError(null);
@@ -346,7 +325,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
             delivery_maps_url: '',
         }));
         setMapsLinkInput('');
-        setMapsResolutionQuality(null);
         setLocationStatus('idle');
         setLocationError(null);
         setMapsLinkError(null);
@@ -359,7 +337,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
         try {
             const coords = await requestGeolocation();
-            applyCoordinates(coords.latitude, coords.longitude, null, null, null);
+            applyCoordinates(coords.latitude, coords.longitude, null);
         } catch (error) {
             setLocationStatus('error');
             setLocationError(error instanceof Error ? error.message : 'No pudimos obtener tu ubicación.');
@@ -398,7 +376,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     longitude: localParsed.longitude,
                     mapsUrl: trimmed,
                 };
-                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl, null, 'exact');
+                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl, null);
                 return resolved;
             }
 
@@ -426,7 +404,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     resolved.longitude,
                     resolved.mapsUrl,
                     resolved.zoneId ?? null,
-                    resolved.resolutionQuality ?? 'approximate',
                 );
                 return resolved;
             } finally {
@@ -570,15 +547,12 @@ export default function Checkout({ organization, zones, customer, addresses, car
         return findZoneForCoords(zones, data.latitude!, data.longitude!);
     }, [hasLocatedCoords, data.latitude, data.longitude, zones]);
 
-    const lockDeliveryZone =
-        hasLocatedCoords && gpsZone !== null && mapsResolutionQuality !== 'approximate';
-
     const matchedZone = useMemo(() => {
         if (data.type !== 'delivery') {
             return null;
         }
 
-        if (lockDeliveryZone && gpsZone) {
+        if (hasLocatedCoords && gpsZone) {
             return gpsZone;
         }
 
@@ -586,12 +560,10 @@ export default function Checkout({ organization, zones, customer, addresses, car
             return zones.find((zone) => zone.id === data.zone_id) ?? null;
         }
 
-        if (hasLocatedCoords && gpsZone) {
-            return gpsZone;
-        }
-
         return null;
-    }, [data.type, data.zone_id, gpsZone, hasLocatedCoords, lockDeliveryZone, zones]);
+    }, [data.type, data.zone_id, gpsZone, hasLocatedCoords, zones]);
+
+    const lockDeliveryZone = hasLocatedCoords && gpsZone !== null;
 
     const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
     const orderTotal = subtotal + deliveryFee;
@@ -614,10 +586,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     latitude: resolved.latitude,
                     longitude: resolved.longitude,
                     delivery_maps_url: resolved.mapsUrl,
-                    zone_id:
-                        resolved.resolutionQuality === 'approximate'
-                            ? data.zone_id || zone?.id || ''
-                            : zone?.id ?? data.zone_id,
+                    zone_id: zone?.id ?? data.zone_id,
                 };
             } else if (resolved?.mapsUrl) {
                 mapsSubmitOverride.current = {
@@ -840,11 +809,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                             {zones.length > 0 && (
                                 <div className="grid gap-2">
                                     <FieldLabel htmlFor="delivery-zone">Zona de entrega</FieldLabel>
-                                    <DeliveryZoneMessages
-                                        hasCoords={hasLocatedCoords}
-                                        detectedZone={gpsZone}
-                                        isApproximateLocation={mapsResolutionQuality === 'approximate'}
-                                    />
+                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
                                     <ZoneSelectField
                                         id="delivery-zone"
                                         zones={zones}
@@ -1036,11 +1001,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                             {showSavedAddresses && data.address_id && zones.length > 0 && (
                                 <div className="grid gap-2">
                                     <FieldLabel htmlFor="delivery-zone-saved">Zona de entrega</FieldLabel>
-                                    <DeliveryZoneMessages
-                                        hasCoords={hasLocatedCoords}
-                                        detectedZone={gpsZone}
-                                        isApproximateLocation={mapsResolutionQuality === 'approximate'}
-                                    />
+                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
                                     <ZoneSelectField
                                         id="delivery-zone-saved"
                                         zones={zones}
