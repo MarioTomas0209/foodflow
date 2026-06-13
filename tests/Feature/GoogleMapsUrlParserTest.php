@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Http;
 test('google maps url parser reads coordinates from direct input', function () {
     expect(GoogleMapsUrlParser::parse('16.2520, -92.1350'))
         ->toBe(['latitude' => 16.2520, 'longitude' => -92.1350]);
+
+    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('exact');
 });
 
 test('google maps url parser reads coordinates from full maps url', function () {
@@ -27,6 +29,7 @@ test('google maps url parser resolves short share links', function () {
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/MpqTqd8Hd2ADujCk7');
 
     expect($coords)->toBe(['latitude' => 16.2521, 'longitude' => -92.1351]);
+    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('exact');
 });
 
 test('storefront resolves shared google maps links', function () {
@@ -54,6 +57,7 @@ test('storefront resolves shared google maps links', function () {
         ->assertJson([
             'latitude' => 16.2520,
             'longitude' => -92.1350,
+            'resolution_quality' => 'exact',
         ]);
 });
 
@@ -130,6 +134,23 @@ test('google maps url parser geocodes place name when html has no usable coordin
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/vMnkbZ83nMbpzusD7?g_st=ac');
 
     expect($coords)->toBe(['latitude' => 16.25, 'longitude' => -92.13]);
+    expect(GoogleMapsUrlParser::resolutionQuality())->toBe('approximate');
+});
+
+test('google maps url parser rejects datacenter html coordinates outside delivery area', function () {
+    Http::fake([
+        'maps.app.goo.gl/*' => Http::response('', 302, [
+            'Location' => 'https://www.google.com/maps/place/El+Arenal,+Comit%C3%A1n+de+Dom%C3%ADnguez,+Chis.,+Mexico/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+        ]),
+        'www.google.com/*' => Http::response('<script>!3d23.625269!4d-102.540613</script>', 200),
+        'nominatim.openstreetmap.org/*' => Http::response([
+            ['lat' => '16.2430976', 'lon' => '-92.1337856', 'display_name' => 'El Arenal, Comitán de Domínguez, Chiapas, México'],
+        ]),
+    ]);
+
+    $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/NcUut5SKowPfppfJ8');
+
+    expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
 });
 
 test('google maps url parser resolves exact place pin via google feature id cid', function () {

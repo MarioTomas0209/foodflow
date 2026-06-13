@@ -123,6 +123,7 @@ class OrderController extends Controller
                 'longitude' => $coords['longitude'],
                 'zone_id' => $zone?->id,
                 'maps_url' => trim($validated['url']),
+                'resolution_quality' => GoogleMapsUrlParser::resolutionQuality(),
             ]);
         }
 

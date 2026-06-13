@@ -38,6 +38,8 @@ class GoogleMapsUrlParser
         'bias_radius_km' => 20.0,
     ];
 
+    private static string $resolutionQuality = 'approximate';
+
     public static function isShareUrl(string $input): bool
     {
         $url = self::normalizeUrl(trim($input));
@@ -53,6 +55,16 @@ class GoogleMapsUrlParser
         return self::featureIdToCidCandidates($featureId);
     }
 
+    public static function resolutionQuality(): string
+    {
+        return self::$resolutionQuality;
+    }
+
+    private static function markExactResolution(): void
+    {
+        self::$resolutionQuality = 'exact';
+    }
+
     /**
      * @param  array{
      *   bias_lat?: float,
@@ -65,6 +77,7 @@ class GoogleMapsUrlParser
     public static function parse(string $input, ?array $context = null): ?array
     {
         $geocodeContext = self::resolveGeocodeContext($context);
+        self::$resolutionQuality = 'approximate';
         $trimmed = trim($input);
 
         if ($trimmed === '') {
@@ -82,6 +95,8 @@ class GoogleMapsUrlParser
         $parsed = self::parseUrlString($url);
 
         if ($parsed !== null) {
+            self::markExactResolution();
+
             return $parsed;
         }
 
@@ -112,14 +127,18 @@ class GoogleMapsUrlParser
 
                 $parsed = self::parseUrlString($effectiveUrl);
 
-                if ($parsed !== null) {
+                if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
+                    self::markExactResolution();
+
                     return $parsed;
                 }
 
                 if ($response->successful()) {
-                    $parsed = self::parseEmbeddedCoords($response->body());
+                    $parsed = self::parseEmbeddedCoords($response->body(), $context);
 
                     if ($parsed !== null) {
+                        self::markExactResolution();
+
                         return $parsed;
                     }
                 }
@@ -150,7 +169,7 @@ class GoogleMapsUrlParser
         $lastGoogleMapsUrl = null;
 
         foreach ([self::DESKTOP_USER_AGENT, self::BROWSER_USER_AGENT] as $userAgent) {
-            $walked = self::walkRedirectChain($url, $userAgent);
+            $walked = self::walkRedirectChain($url, $userAgent, $context);
 
             if ($walked['coords'] !== null) {
                 return $walked['coords'];
@@ -174,7 +193,7 @@ class GoogleMapsUrlParser
      *   last_google_maps_url: string|null
      * }
      */
-    private static function walkRedirectChain(string $url, string $userAgent): array
+    private static function walkRedirectChain(string $url, string $userAgent, array $context): array
     {
         $current = $url;
         $lastGoogleMapsUrl = null;
@@ -202,7 +221,9 @@ class GoogleMapsUrlParser
 
             $parsed = self::parseUrlString($current);
 
-            if ($parsed !== null) {
+            if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
+                self::markExactResolution();
+
                 return [
                     'coords' => $parsed,
                     'last_google_maps_url' => $lastGoogleMapsUrl,
@@ -210,9 +231,11 @@ class GoogleMapsUrlParser
             }
 
             if ($response->successful()) {
-                $parsed = self::parseEmbeddedCoords($response->body());
+                $parsed = self::parseEmbeddedCoords($response->body(), $context);
 
                 if ($parsed !== null) {
+                    self::markExactResolution();
+
                     return [
                         'coords' => $parsed,
                         'last_google_maps_url' => $lastGoogleMapsUrl,
@@ -235,7 +258,9 @@ class GoogleMapsUrlParser
 
                 $parsed = self::parseUrlString($resolvedLocation);
 
-                if ($parsed !== null) {
+                if ($parsed !== null && self::isPlausibleDeliveryCoords($parsed, $context)) {
+                    self::markExactResolution();
+
                     return [
                         'coords' => $parsed,
                         'last_google_maps_url' => $lastGoogleMapsUrl,
@@ -281,7 +306,7 @@ class GoogleMapsUrlParser
             'desktop' => self::DESKTOP_USER_AGENT,
             'mobile' => self::BROWSER_USER_AGENT,
         ] as $label => $userAgent) {
-            $walked = self::walkRedirectChain($normalized, $userAgent);
+            $walked = self::walkRedirectChain($normalized, $userAgent, self::resolveGeocodeContext(null));
             $urls[$label] = $walked['last_google_maps_url'];
         }
 
@@ -467,7 +492,7 @@ class GoogleMapsUrlParser
                 (float) ($location['lng'] ?? 0),
             );
 
-            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+            if ($coords === null || ! self::isPlausibleDeliveryCoords($coords, self::resolveGeocodeContext(null))) {
                 return null;
             }
 
@@ -926,12 +951,12 @@ class GoogleMapsUrlParser
      */
     private static function selectBestGeocodeCandidate(array $candidates, array $context): ?array
     {
-        $inMexico = array_values(array_filter(
+        $inArea = array_values(array_filter(
             $candidates,
-            fn (array $coords) => self::isWithinMexico($coords['latitude'], $coords['longitude']),
+            fn (array $coords) => self::isPlausibleDeliveryCoords($coords, $context),
         ));
 
-        if ($inMexico === []) {
+        if ($inArea === []) {
             return null;
         }
 
@@ -939,7 +964,7 @@ class GoogleMapsUrlParser
 
         if ($zones !== []) {
             $insideZone = array_values(array_filter(
-                $inMexico,
+                $inArea,
                 fn (array $coords) => self::matchesAnyDeliveryZone($coords, $zones),
             ));
 
@@ -949,7 +974,7 @@ class GoogleMapsUrlParser
         }
 
         $withinBias = array_values(array_filter(
-            $inMexico,
+            $inArea,
             fn (array $coords) => self::distanceKm(
                 $coords['latitude'],
                 $coords['longitude'],
@@ -958,7 +983,7 @@ class GoogleMapsUrlParser
             ) <= $context['bias_radius_km'],
         ));
 
-        return self::closestToBias($withinBias !== [] ? $withinBias : $inMexico, $context);
+        return self::closestToBias($withinBias !== [] ? $withinBias : $inArea, $context);
     }
 
     /**
@@ -1166,33 +1191,59 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function parseEmbeddedCoords(string $content): ?array
+    private static function parseEmbeddedCoords(string $content, array $context): ?array
     {
         $candidates = [$content, urldecode($content)];
         $found = [];
 
         foreach ($candidates as $candidate) {
             self::collectPatternMatches($candidate, [
-                ['regex' => '/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2, 'priority' => 100, 'require_mexico' => false],
-                ['regex' => '/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1, 'priority' => 100, 'require_mexico' => false],
-                ['regex' => '/%213d(-?\d+(?:\.\d+)?)%214d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2, 'priority' => 100, 'require_mexico' => false],
-                ['regex' => '/%212d(-?\d+(?:\.\d+)?)%213d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1, 'priority' => 100, 'require_mexico' => false],
+                ['regex' => '/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2, 'priority' => 100, 'require_mexico' => true],
+                ['regex' => '/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1, 'priority' => 100, 'require_mexico' => true],
+                ['regex' => '/%213d(-?\d+(?:\.\d+)?)%214d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2, 'priority' => 100, 'require_mexico' => true],
+                ['regex' => '/%212d(-?\d+(?:\.\d+)?)%213d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1, 'priority' => 100, 'require_mexico' => true],
                 ['regex' => '/0x[a-f0-9]+:0x[a-f0-9]+.{0,1200}"mx",\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\]/i', 'lat' => 3, 'lng' => 2, 'priority' => 80, 'require_mexico' => true],
                 ['regex' => '/"mx",\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\]/', 'lat' => 3, 'lng' => 2, 'priority' => 20, 'require_mexico' => true],
                 ['regex' => '/\[\[(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\],\[0,0,0\]/', 'lat' => 3, 'lng' => 2, 'priority' => 20, 'require_mexico' => true],
-            ], $found);
+            ], $found, $context);
         }
 
-        return self::selectBestCoords($found);
+        $coords = self::selectBestCoords($found);
+
+        if ($coords !== null && ! self::isPlausibleDeliveryCoords($coords, $context)) {
+            return null;
+        }
+
+        return $coords;
+    }
+
+    /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     */
+    private static function isPlausibleDeliveryCoords(array $coords, array $context): bool
+    {
+        if (! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+            return false;
+        }
+
+        $maxDistanceKm = max($context['bias_radius_km'] + 25.0, 35.0);
+
+        return self::distanceKm(
+            $coords['latitude'],
+            $coords['longitude'],
+            $context['bias_lat'],
+            $context['bias_lng'],
+        ) <= $maxDistanceKm;
     }
 
     /**
      * @param  list<array{coords: array{latitude: float, longitude: float}, priority: int}>  $found
      * @param  list<array{regex: string, lat: int, lng: int, priority: int, require_mexico: bool}>  $patterns
      */
-    private static function collectPatternMatches(string $candidate, array $patterns, array &$found): void
+    private static function collectPatternMatches(string $candidate, array $patterns, array &$found, array $context): void
     {
         foreach ($patterns as $pattern) {
             if (! preg_match_all($pattern['regex'], $candidate, $matches, PREG_SET_ORDER)) {
@@ -1210,6 +1261,10 @@ class GoogleMapsUrlParser
                 }
 
                 if ($pattern['require_mexico'] && ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+                    continue;
+                }
+
+                if (! self::isPlausibleDeliveryCoords($coords, $context)) {
                     continue;
                 }
 
