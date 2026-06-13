@@ -3,6 +3,7 @@ import { LoaderCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
 
 import InputError from '@/components/input-error';
+import { FormTextarea } from '@/components/menu/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ interface DeliveryZonesIndexProps {
 
 type ZoneFormData = {
     name: string;
+    description: string;
     fee: string;
     center_lat: string;
     center_lng: string;
@@ -26,6 +28,7 @@ type ZoneFormData = {
 
 const emptyForm: ZoneFormData = {
     name: '',
+    description: '',
     fee: '',
     center_lat: '',
     center_lng: '',
@@ -43,6 +46,7 @@ export default function Index({ zones }: DeliveryZonesIndexProps) {
         if (editingZone) {
             setData({
                 name: editingZone.name,
+                description: editingZone.description ?? '',
                 fee: editingZone.fee,
                 center_lat: editingZone.center_lat,
                 center_lng: editingZone.center_lng,
@@ -148,6 +152,9 @@ export default function Index({ zones }: DeliveryZonesIndexProps) {
                                                 {zone.is_active ? 'Activa' : 'Inactiva'}
                                             </span>
                                         </div>
+                                        {zone.description && (
+                                            <p className="text-muted-foreground text-sm leading-relaxed">{zone.description}</p>
+                                        )}
                                         <p className="text-muted-foreground text-sm">
                                             Envío: {formatCurrency(zone.fee)} · Radio: {zone.radius_km} km
                                         </p>
@@ -196,6 +203,22 @@ export default function Index({ zones }: DeliveryZonesIndexProps) {
                                 required
                             />
                             <InputError message={errors.name} />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="zone-description">Descripción (opcional)</Label>
+                            <FormTextarea
+                                id="zone-description"
+                                value={data.description}
+                                onChange={(e) => setData('description', e.target.value)}
+                                disabled={processing}
+                                placeholder="Ej: Cubre barrios cerca de la UNACH, Plaza las Flores y colonias de esa salida."
+                                rows={3}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                Texto orientativo para el cliente. Usa un nombre corto arriba y los detalles aquí.
+                            </p>
+                            <InputError message={errors.description} />
                         </div>
 
                         <div className="grid gap-2">

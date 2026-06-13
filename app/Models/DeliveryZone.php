@@ -17,6 +17,7 @@ class DeliveryZone extends Model
     protected $fillable = [
         'organization_id',
         'name',
+        'description',
         'fee',
         'center_lat',
         'center_lng',
@@ -52,6 +53,11 @@ class DeliveryZone extends Model
 
     public function containsCoordinates(float $latitude, float $longitude): bool
     {
+        return $this->distanceFromCenterKm($latitude, $longitude) <= (float) $this->radius_km;
+    }
+
+    public function distanceFromCenterKm(float $latitude, float $longitude): float
+    {
         $earthRadiusKm = 6371;
 
         $latFrom = deg2rad((float) $this->center_lat);
@@ -67,8 +73,6 @@ class DeliveryZone extends Model
             + cos($latFrom) * cos($latTo) * sin($lngDelta / 2) ** 2
         ));
 
-        $distanceKm = $angle * $earthRadiusKm;
-
-        return $distanceKm <= (float) $this->radius_km;
+        return $angle * $earthRadiusKm;
     }
 }

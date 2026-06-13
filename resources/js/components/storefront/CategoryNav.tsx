@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
+import { storefrontAccent } from '@/lib/storefront-theme';
 import { type Category } from '@/types';
 
 interface CategoryNavProps {
@@ -29,7 +30,7 @@ export function CategoryNav({ categories, activeCategoryId, onSelect }: Category
     return (
         <nav
             ref={scrollRef}
-            className="scrollbar-hide -mx-4 flex gap-1 overflow-x-auto px-4"
+            className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4"
             aria-label="Categorías del menú"
         >
             {categories.map((category) => {
@@ -42,10 +43,10 @@ export function CategoryNav({ categories, activeCategoryId, onSelect }: Category
                         data-category-tab={category.id}
                         onClick={() => onSelect(category.id)}
                         className={cn(
-                            'shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors',
+                            'shrink-0 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors',
                             isActive
-                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+                                ? cn(storefrontAccent.pill, 'shadow-sm')
+                                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground',
                         )}
                     >
                         {category.name}

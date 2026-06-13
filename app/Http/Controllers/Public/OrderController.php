@@ -50,7 +50,7 @@ class OrderController extends Controller
             ]),
             'zones' => $organization->deliveryZones()
                 ->where('is_active', true)
-                ->get(['id', 'name', 'fee', 'center_lat', 'center_lng', 'radius_km']),
+                ->get(['id', 'name', 'description', 'fee', 'center_lat', 'center_lng', 'radius_km']),
             'customer' => $customer ? [
                 'id' => $customer->id,
                 'name' => $customer->name,
@@ -236,7 +236,10 @@ class OrderController extends Controller
             ->where('organization_id', $organization->id)
             ->where('is_active', true)
             ->whereIn('id', $productIds)
-            ->with(['variants' => fn ($query) => $query->where('is_active', true)])
+            ->with([
+                'category',
+                'variants' => fn ($query) => $query->where('is_active', true),
+            ])
             ->get()
             ->keyBy('id');
 
@@ -244,6 +247,18 @@ class OrderController extends Controller
             throw ValidationException::withMessages([
                 'items' => 'Uno o más productos no están disponibles.',
             ]);
+        }
+
+        foreach ($menuItems as $index => $item) {
+            /** @var Product $product */
+            $product = $products->get($item['product_id']);
+            $category = $product->category;
+
+            if ($category !== null && ! $category->canOrderNow()) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => "{$product->name} ya no acepta pedidos en este horario.",
+                ]);
+            }
         }
 
         $todayMenu = $organization->todayMenu();
@@ -268,6 +283,12 @@ class OrderController extends Controller
             if ($dailyMenuItems->count() !== $dailyItemIds->count()) {
                 throw ValidationException::withMessages([
                     'items' => 'Uno o más platillos del menú del día no están disponibles.',
+                ]);
+            }
+
+            if (! $todayMenu->canOrderNow()) {
+                throw ValidationException::withMessages([
+                    'items' => 'El menú del día ya no acepta pedidos.',
                 ]);
             }
         }
@@ -298,18 +319,29 @@ class OrderController extends Controller
             $latitude = $validated['latitude'] ?? null;
             $longitude = $validated['longitude'] ?? null;
 
-            if ($latitude && $longitude) {
-                $zone = $organization->findDeliveryZoneFor($latitude, $longitude);
+            if (($latitude === null || $longitude === null) && ! empty($validated['delivery_maps_url'])) {
+                $parsedCoords = GoogleMapsUrlParser::parse($validated['delivery_maps_url']);
+
+                if ($parsedCoords !== null) {
+                    $latitude = $parsedCoords['latitude'];
+                    $longitude = $parsedCoords['longitude'];
+                }
             }
 
-            if ($zone === null) {
-                if (! empty($validated['zone_id'])) {
-                    $zone = DeliveryZone::find($validated['zone_id']);
+            if ($latitude !== null && $longitude !== null) {
+                $zone = $organization->findDeliveryZoneFor($latitude, $longitude);
 
-                    if ($zone && $zone->organization_id !== $organization->id) {
-                        $zone = null;
-                    }
+                if ($zone === null) {
+                    throw ValidationException::withMessages([
+                        'delivery_address' => 'Tu ubicación está fuera de nuestras zonas de entrega.',
+                    ]);
                 }
+            } elseif (! empty($validated['zone_id'])) {
+                $zone = DeliveryZone::query()
+                    ->where('id', $validated['zone_id'])
+                    ->where('organization_id', $organization->id)
+                    ->where('is_active', true)
+                    ->first();
             }
 
             if ($zone === null) {

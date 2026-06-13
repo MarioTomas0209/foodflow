@@ -66,6 +66,7 @@ class StorefrontController extends Controller
                     'day_of_week', 'opens_at', 'closes_at', 'is_closed',
                 ]),
                 'is_open_now' => $organization->isOpenNow(),
+                'has_delivery' => $organization->deliveryZones()->where('is_active', true)->exists(),
             ]),
             'daily_menu' => $this->formatDailyMenuForStorefront($organization->todayMenu()),
             'categories' => $categories,
@@ -88,6 +89,7 @@ class StorefrontController extends Controller
             'available_from' => $menu->available_from,
             'available_until' => $menu->available_until,
             'is_available_now' => $menu->isAvailableNow(),
+            'can_order_now' => $menu->canOrderNow(),
             'items' => $menu->items->map(fn (DailyMenuItem $item) => [
                 'id' => $item->id,
                 'name' => $item->name,

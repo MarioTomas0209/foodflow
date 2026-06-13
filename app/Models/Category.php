@@ -79,10 +79,28 @@ class Category extends Model
 
     public function canOrderNow(): bool
     {
-        if ($this->schedule_type === 'informative') {
+        if (
+            $this->available_from === null
+            && $this->available_until === null
+            && ($this->available_days === null || $this->available_days === [])
+        ) {
             return true;
         }
 
-        return $this->isAvailableNow();
+        $now = now();
+        $currentTime = $now->format('H:i:s');
+        $currentDay = (int) $now->dayOfWeek;
+
+        if ($this->available_days !== null && $this->available_days !== []) {
+            if (! in_array($currentDay, $this->available_days, true)) {
+                return false;
+            }
+        }
+
+        if ($this->available_until !== null && $currentTime > $this->available_until) {
+            return false;
+        }
+
+        return true;
     }
 }

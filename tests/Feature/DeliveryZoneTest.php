@@ -78,6 +78,42 @@ test('organization finds active delivery zone for coordinates', function () {
         ->and($organization->findDeliveryZoneFor(16.5000, -92.5000))->toBeNull();
 });
 
+test('organization picks the closest zone when coordinates overlap multiple zones', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Zonas Solapadas',
+        'slug' => 'zonas-solapadas-'.Str::lower(Str::random(6)),
+        'status' => 'active',
+    ]);
+
+    $centro = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Zona Centro',
+        'fee' => 35,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 8,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $norte = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Zona Norte',
+        'fee' => 50,
+        'center_lat' => 16.3000,
+        'center_lng' => -92.1000,
+        'radius_km' => 8,
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+
+    expect($organization->findDeliveryZoneFor(16.2800, -92.1200)?->id)->toBe($norte->id)
+        ->and($organization->findDeliveryZoneFor(16.2520, -92.1350)?->id)->toBe($centro->id);
+});
+
 test('orders can belong to a delivery zone', function () {
     $user = User::factory()->create();
 

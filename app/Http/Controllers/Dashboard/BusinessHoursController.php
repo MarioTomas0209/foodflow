@@ -13,6 +13,19 @@ class BusinessHoursController extends Controller
     {
         $organization = auth()->user()->currentOrganization;
 
+        $hours = collect($request->input('hours', []))
+            ->map(function (array $hour) {
+                if ($hour['is_closed'] ?? false) {
+                    $hour['opens_at'] = null;
+                    $hour['closes_at'] = null;
+                }
+
+                return $hour;
+            })
+            ->all();
+
+        $request->merge(['hours' => $hours]);
+
         $validated = $request->validate([
             'hours' => ['required', 'array', 'size:7'],
             'hours.*.day_of_week' => ['required', 'integer', 'between:0,6'],

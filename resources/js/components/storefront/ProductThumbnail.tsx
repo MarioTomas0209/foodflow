@@ -10,7 +10,7 @@ export function ProductThumbnail({ image, name, className }: ProductThumbnailPro
     return (
         <div
             className={cn(
-                'bg-muted flex shrink-0 items-center justify-center overflow-hidden rounded-lg border',
+                'bg-muted flex shrink-0 items-center justify-center overflow-hidden rounded-lg',
                 className ?? 'size-12',
             )}
         >

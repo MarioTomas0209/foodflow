@@ -35,6 +35,11 @@ export function BusinessHoursForm({ hours }: BusinessHoursFormProps) {
 
         put(route('dashboard.hours.update'), {
             preserveScroll: true,
+            transform: (payload) => ({
+                hours: payload.hours.map((hour) =>
+                    hour.is_closed ? { ...hour, opens_at: null, closes_at: null } : hour,
+                ),
+            }),
         });
     };
 

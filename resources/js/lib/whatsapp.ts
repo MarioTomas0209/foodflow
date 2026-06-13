@@ -2,6 +2,36 @@ import { formatCurrency } from '@/lib/format-currency';
 import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import { type Order, type PublicOrganization } from '@/types';
 
+export function normalizeWhatsAppPhone(phone: string): string | null {
+    const digits = phone.replace(/\D/g, '');
+
+    if (!digits) {
+        return null;
+    }
+
+    if (digits.length === 10) {
+        return `52${digits}`;
+    }
+
+    return digits;
+}
+
+export function buildWhatsAppContactUrl(phone: string, message?: string): string | null {
+    const normalized = normalizeWhatsAppPhone(phone);
+
+    if (!normalized) {
+        return null;
+    }
+
+    const url = `https://wa.me/${normalized}`;
+
+    if (!message) {
+        return url;
+    }
+
+    return `${url}?text=${encodeURIComponent(message)}`;
+}
+
 export function buildWhatsAppMessage(order: Order, organization: PublicOrganization): string {
     const lines: string[] = [
         `¡Hola! Quiero confirmar mi pedido en *${organization.name}*:`,
@@ -47,13 +77,9 @@ export function buildWhatsAppMessage(order: Order, organization: PublicOrganizat
 }
 
 export function buildWhatsAppUrl(order: Order, organization: PublicOrganization): string | null {
-    const phone = organization.phone?.replace(/\D/g, '');
-
-    if (!phone) {
+    if (!organization.phone) {
         return null;
     }
 
-    const message = encodeURIComponent(buildWhatsAppMessage(order, organization));
-
-    return `https://wa.me/${phone}?text=${message}`;
+    return buildWhatsAppContactUrl(organization.phone, buildWhatsAppMessage(order, organization));
 }

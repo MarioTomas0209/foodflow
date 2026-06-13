@@ -127,7 +127,106 @@ test('organization todayMenu returns active menu for today', function () {
     expect($menu)->not->toBeNull()
         ->and($menu->id)->toBe($todayMenu->id)
         ->and($menu->items)->toHaveCount(1)
-        ->and($menu->isAvailableNow())->toBeFalse();
+        ->and($menu->isAvailableNow())->toBeFalse()
+        ->and($menu->canOrderNow())->toBeTrue();
+
+    Carbon::setTestNow();
+});
+
+test('daily menu orders are accepted before opening hours', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-15 10:00:00'));
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Menú anticipado',
+        'slug' => 'menu-anticipado',
+        'status' => 'active',
+    ]);
+
+    $menu = DailyMenu::create([
+        'organization_id' => $organization->id,
+        'date' => '2026-06-15',
+        'available_from' => '14:00:00',
+        'available_until' => '19:00:00',
+        'is_active' => true,
+    ]);
+
+    $dailyItem = DailyMenuItem::create([
+        'daily_menu_id' => $menu->id,
+        'name' => 'Guacamole',
+        'price' => 45,
+        'stock' => 5,
+        'has_variants' => false,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Ana',
+        'customer_phone' => '5512345678',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'source' => 'daily',
+                'product_id' => $dailyItem->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    Carbon::setTestNow();
+});
+
+test('daily menu orders are rejected outside configured hours', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-15 18:30:00'));
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Menú fuera de horario',
+        'slug' => 'menu-fuera-horario',
+        'status' => 'active',
+    ]);
+
+    $menu = DailyMenu::create([
+        'organization_id' => $organization->id,
+        'date' => '2026-06-15',
+        'available_from' => '13:00:00',
+        'available_until' => '17:00:00',
+        'is_active' => true,
+    ]);
+
+    $dailyItem = DailyMenuItem::create([
+        'daily_menu_id' => $menu->id,
+        'name' => 'Sopa del día',
+        'price' => 55,
+        'stock' => 5,
+        'has_variants' => false,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Carla',
+        'customer_phone' => '5512349999',
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'source' => 'daily',
+                'product_id' => $dailyItem->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertSessionHasErrors('items');
+
+    expect(\App\Models\Order::query()->count())->toBe(0);
 
     Carbon::setTestNow();
 });
@@ -172,6 +271,7 @@ test('storefront exposes today daily menu with public item images', function () 
         ->assertInertia(fn (Assert $page) => $page
             ->where('daily_menu.name', 'Comida corrida')
             ->where('daily_menu.is_available_now', true)
+            ->where('daily_menu.can_order_now', true)
             ->has('daily_menu.items', 1)
             ->where('daily_menu.items.0.name', 'Guisado del día')
             ->where('daily_menu.items.0.image', $expectedUrl)

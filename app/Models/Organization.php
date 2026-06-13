@@ -117,11 +117,19 @@ class Organization extends Model
 
     public function findDeliveryZoneFor(float $latitude, float $longitude): ?DeliveryZone
     {
-        return $this->deliveryZones()
+        $matchingZones = $this->deliveryZones()
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->get()
-            ->first(fn (DeliveryZone $zone) => $zone->containsCoordinates($latitude, $longitude));
+            ->filter(fn (DeliveryZone $zone) => $zone->containsCoordinates($latitude, $longitude));
+
+        if ($matchingZones->isEmpty()) {
+            return null;
+        }
+
+        return $matchingZones
+            ->sortBy(fn (DeliveryZone $zone) => $zone->distanceFromCenterKm($latitude, $longitude))
+            ->first();
     }
 
     public function logoPublicUrl(): ?string

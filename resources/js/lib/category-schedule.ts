@@ -60,24 +60,28 @@ export const SCHEDULE_TYPE_LABELS: Record<Category['schedule_type'], string> = {
     restricted: 'Restringido',
 };
 
-export function categoryCanOrderNow(
-    category: Pick<Category, 'schedule_type' | 'is_available_now'>,
-): boolean {
-    return category.schedule_type === 'informative' || category.is_available_now;
+export function categoryCanOrderNow(category: Pick<Category, 'can_order_now'>): boolean {
+    return category.can_order_now;
 }
 
 export function shouldShowCategoryScheduleBanner(
-    category: Pick<Category, 'available_from' | 'available_until' | 'available_days' | 'schedule_type' | 'is_available_now'>,
+    category: Pick<Category, 'available_from' | 'available_until' | 'available_days' | 'is_available_now'>,
 ): boolean {
     if (!categoryHasSchedule(category) || !formatCategoryAvailabilityMessage(category)) {
         return false;
     }
 
-    return category.schedule_type === 'informative' || !category.is_available_now;
+    return !category.is_available_now;
 }
 
 export function isCategoryScheduleBannerWarning(
-    category: Pick<Category, 'schedule_type' | 'is_available_now'>,
+    category: Pick<Category, 'can_order_now'>,
 ): boolean {
-    return category.schedule_type === 'restricted' && !category.is_available_now;
+    return !category.can_order_now;
+}
+
+export function isCategoryScheduleBannerAnticipated(
+    category: Pick<Category, 'can_order_now' | 'is_available_now'>,
+): boolean {
+    return category.can_order_now && !category.is_available_now;
 }

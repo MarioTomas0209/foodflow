@@ -64,4 +64,14 @@ class DailyMenu extends Model
 
         return true;
     }
+
+    /** Whether customers can still place orders (allowed before opening; blocked after closing). */
+    public function canOrderNow(): bool
+    {
+        if ($this->available_until === null) {
+            return true;
+        }
+
+        return now()->format('H:i:s') <= $this->available_until;
+    }
 }

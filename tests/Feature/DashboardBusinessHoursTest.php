@@ -112,6 +112,27 @@ test('business hours update requires times when day is open', function () {
         ->assertSessionHasErrors('hours.4.opens_at');
 });
 
+test('business hours update accepts closed days without times', function () {
+    [$user, $organization] = createBusinessHoursUser();
+
+    $hours = collect(range(0, 6))->map(fn (int $day) => [
+        'day_of_week' => $day,
+        'opens_at' => null,
+        'closes_at' => null,
+        'is_closed' => true,
+    ])->values()->all();
+
+    $this->actingAs($user)
+        ->put(route('dashboard.hours.update'), ['hours' => $hours])
+        ->assertRedirect(route('dashboard.settings'))
+        ->assertSessionHas('success');
+
+    expect(OrganizationHour::query()
+        ->where('organization_id', $organization->id)
+        ->where('is_closed', true)
+        ->count())->toBe(7);
+});
+
 test('guests cannot update business hours', function () {
     $this->put(route('dashboard.hours.update'), defaultHoursPayload())
         ->assertRedirect(route('login'));

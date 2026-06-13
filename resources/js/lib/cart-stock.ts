@@ -32,7 +32,7 @@ export function stockLimitMessage(maxStock: number | null, quantityInCart: numbe
     return null;
 }
 
-function findProduct(categories: Category[], productId: string) {
+function findProductInCategories(categories: Category[], productId: string) {
     for (const category of categories) {
         const product = category.products.find((entry) => entry.id === productId);
 
@@ -42,6 +42,27 @@ function findProduct(categories: Category[], productId: string) {
     }
 
     return undefined;
+}
+
+function findCategoryForProduct(categories: Category[], productId: string): Category | undefined {
+    for (const category of categories) {
+        if (category.products.some((product) => product.id === productId)) {
+            return category;
+        }
+    }
+
+    return undefined;
+}
+
+export function getCategoryForCartItem(
+    categories: Category[],
+    item: Pick<CartItem, 'productId' | 'source'>,
+): Category | undefined {
+    if ((item.source ?? 'menu') !== 'menu') {
+        return undefined;
+    }
+
+    return findCategoryForProduct(categories, item.productId);
 }
 
 export function getStockForCartItem(
@@ -73,7 +94,7 @@ export function getStockForCartItem(
         return dailyItem.stock;
     }
 
-    const product = findProduct(categories, item.productId);
+    const product = findProductInCategories(categories, item.productId);
 
     if (!product) {
         return undefined;
@@ -101,7 +122,23 @@ export function validateCartAgainstCatalog(
     categories: Category[],
     dailyMenu?: DailyMenu | null,
 ): string | null {
+    const hasDailyItems = items.some((item) => (item.source ?? 'menu') === 'daily');
+
+    if (hasDailyItems && dailyMenu && !dailyMenu.can_order_now) {
+        return 'El menú del día ya no acepta pedidos. Quita esos platillos de tu carrito.';
+    }
+
     for (const item of items) {
+        if ((item.source ?? 'menu') === 'menu') {
+            const category = getCategoryForCartItem(categories, item);
+
+            if (category && !category.can_order_now) {
+                const label = item.variantName ? `${item.productName} (${item.variantName})` : item.productName;
+
+                return `${label} ya no acepta pedidos. Quita ese producto de tu carrito.`;
+            }
+        }
+
         const stock = getStockForCartItem(categories, dailyMenu, item);
         const label = item.variantName ? `${item.productName} (${item.variantName})` : item.productName;
 

@@ -1,7 +1,7 @@
 import { useForm } from '@inertiajs/react';
 import { FormEventHandler, useCallback, useEffect, useState } from 'react';
 
-import { formatHourLabel } from '@/lib/business-hours';
+import { toTimeInputValue } from '@/lib/business-hours';
 import { categoryHasSchedule } from '@/lib/category-schedule';
 import { type Category, type CategoryScheduleType } from '@/types';
 
@@ -47,8 +47,8 @@ function categoryToFormState(category: Category): CategoryFormData {
         is_active: category.is_active,
         has_schedule: categoryHasSchedule(category),
         schedule_type: category.schedule_type ?? 'informative',
-        available_from: category.available_from ? formatHourLabel(category.available_from) : '08:00',
-        available_until: category.available_until ? formatHourLabel(category.available_until) : '11:00',
+        available_from: category.available_from ? toTimeInputValue(category.available_from) : '08:00',
+        available_until: category.available_until ? toTimeInputValue(category.available_until) : '11:00',
         available_days: category.available_days ?? [1, 2, 3, 4, 5],
     };
 }

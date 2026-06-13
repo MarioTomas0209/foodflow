@@ -3,17 +3,17 @@ import { ArrowLeft, Copy, ExternalLink, MapPin } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format-currency';
 import { getOrderDeliveryMapsUrl } from '@/lib/maps';
 import {
     ORDER_STATUS_LABELS,
-    ORDER_STATUSES,
     ORDER_TYPE_LABELS,
     PAYMENT_METHOD_LABELS,
     formatOrderTime,
     orderStatusBadgeClass,
+    orderStatusesForType,
 } from '@/lib/order-status';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
@@ -74,18 +74,33 @@ export default function Show({ order }: OrderShowProps) {
 
                 <section className="border-border space-y-4 rounded-xl border p-4">
                     <h2 className="font-semibold">Estado del pedido</h2>
-                    <Select value={order.status} onValueChange={(status) => updateStatus(status as Order['status'])}>
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {ORDER_STATUSES.map((status) => (
-                                <SelectItem key={status} value={status}>
+                    <p className="text-muted-foreground text-sm">
+                        {order.type === 'delivery'
+                            ? 'Usa "En camino" cuando el repartidor salga con el pedido.'
+                            : 'Marca el pedido como listo cuando el cliente pueda recogerlo.'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {orderStatusesForType(order.type).map((status) => {
+                            const isActive = order.status === status;
+
+                            return (
+                                <Button
+                                    key={status}
+                                    type="button"
+                                    size="sm"
+                                    variant={isActive ? 'default' : 'outline'}
+                                    className={cn(
+                                        'rounded-full',
+                                        isActive && orderStatusBadgeClass(status),
+                                        isActive && 'border-transparent text-inherit hover:opacity-90',
+                                    )}
+                                    onClick={() => updateStatus(status)}
+                                >
                                     {ORDER_STATUS_LABELS[status]}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                                </Button>
+                            );
+                        })}
+                    </div>
                 </section>
 
                 <section className="border-border space-y-3 rounded-xl border p-4 text-sm">

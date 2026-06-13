@@ -24,6 +24,7 @@ export interface DashboardOrganization {
 export interface DeliveryZone {
     id: string;
     name: string;
+    description: string | null;
     fee: string;
     center_lat: string;
     center_lng: string;
@@ -43,6 +44,7 @@ export interface PublicOrganization {
     city: string | null;
     hours?: OrganizationHour[];
     is_open_now?: boolean;
+    has_delivery?: boolean;
 }
 
 export interface OrganizationHour {
@@ -122,6 +124,7 @@ export interface DailyMenu {
     available_until: string | null;
     is_active?: boolean;
     is_available_now: boolean;
+    can_order_now: boolean;
     items: DailyMenuItem[];
     items_count?: number;
 }
@@ -184,7 +187,7 @@ export interface Order {
     latitude: number | null;
     longitude: number | null;
     delivery_maps_url: string | null;
-    status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+    status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'en_route' | 'delivered' | 'cancelled';
     payment_method: 'cash' | 'transfer';
     subtotal: string;
     delivery_fee: string;
@@ -204,6 +207,7 @@ export interface OrderFilters {
     status: 'all' | Order['status'];
     type: 'all' | Order['type'];
     date: string;
+    search: string;
 }
 
 export interface PaginatedOrders {

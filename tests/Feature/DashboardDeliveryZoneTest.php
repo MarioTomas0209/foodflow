@@ -52,6 +52,7 @@ test('authenticated users can create delivery zones', function () {
     $this->actingAs($user)
         ->post(route('dashboard.delivery-zones.store'), [
             'name' => 'Zona Norte',
+            'description' => 'Cubre barrios cerca de la UNACH y Plaza las Flores.',
             'fee' => 45,
             'center_lat' => 16.3000,
             'center_lng' => -92.1000,
@@ -64,6 +65,7 @@ test('authenticated users can create delivery zones', function () {
     $this->assertDatabaseHas('delivery_zones', [
         'organization_id' => $organization->id,
         'name' => 'Zona Norte',
+        'description' => 'Cubre barrios cerca de la UNACH y Plaza las Flores.',
         'fee' => '45.00',
         'radius_km' => '2.50',
     ]);

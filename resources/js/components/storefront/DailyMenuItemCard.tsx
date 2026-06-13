@@ -1,17 +1,18 @@
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
+import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { stockLimitMessage } from '@/lib/cart-stock';
 import { dailyMenuItemToCartable, dailyMenuVariantToCartable } from '@/lib/cartable-product';
 import { formatCurrency } from '@/lib/format-currency';
+import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
 import { type CartableProduct, type CartableVariant, type DailyMenuItem } from '@/types';
 
 interface DailyMenuItemCardProps {
     item: DailyMenuItem;
+    menuAvailable?: boolean;
     getQuantityInCart: (productId: string, variantId: string | null, source?: 'menu' | 'daily') => number;
     onAdd: (product: CartableProduct, variant?: CartableVariant) => boolean;
 }
@@ -26,7 +27,7 @@ function firstAvailableVariantId(item: DailyMenuItem): string | null {
     return available?.id ?? item.variants[0]?.id ?? null;
 }
 
-export function DailyMenuItemCard({ item, getQuantityInCart, onAdd }: DailyMenuItemCardProps) {
+export function DailyMenuItemCard({ item, menuAvailable = true, getQuantityInCart, onAdd }: DailyMenuItemCardProps) {
     const [selectedVariantId, setSelectedVariantId] = useState<string | null>(() =>
         item.has_variants ? firstAvailableVariantId(item) : null,
     );
@@ -47,12 +48,16 @@ export function DailyMenuItemCard({ item, getQuantityInCart, onAdd }: DailyMenuI
     const displayPrice = item.has_variants && selectedVariant ? selectedVariant.price : item.price;
 
     const canAdd = useMemo(() => {
+        if (!menuAvailable) {
+            return false;
+        }
+
         if (item.has_variants) {
             return selectedVariant !== undefined && isInStock(selectedVariant.stock) && !atStockLimit;
         }
 
         return isInStock(item.stock) && !atStockLimit;
-    }, [atStockLimit, item.has_variants, item.stock, selectedVariant]);
+    }, [atStockLimit, item.has_variants, item.stock, menuAvailable, selectedVariant]);
 
     const variantSoldOutMap = useMemo(
         () => new Map(item.variants.map((variant) => [variant.id, variant.stock === 0])),
@@ -60,6 +65,11 @@ export function DailyMenuItemCard({ item, getQuantityInCart, onAdd }: DailyMenuI
     );
 
     const handleAdd = () => {
+        if (!menuAvailable) {
+            setLimitMessage('El menú del día ya no acepta pedidos.');
+            return;
+        }
+
         if (!canAdd) {
             setLimitMessage(stockLimitMessage(activeStock, quantityInCart));
             return;
@@ -80,97 +90,92 @@ export function DailyMenuItemCard({ item, getQuantityInCart, onAdd }: DailyMenuI
     };
 
     return (
-        <Card className={cn('flex h-full flex-col overflow-hidden py-0', isSoldOut && 'opacity-90')}>
-            <div className="relative aspect-[4/3] w-full shrink-0">
-                {item.image ? (
-                    <img src={item.image} alt={item.name} className="size-full object-cover" />
-                ) : (
-                    <div className="flex size-full items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-950/40 dark:to-amber-950/20">
-                        <span className="text-5xl font-semibold text-orange-700/70 dark:text-orange-300/70">
-                            {item.name.charAt(0).toUpperCase()}
+        <article
+            className={cn(
+                'border-border bg-card flex gap-3 rounded-2xl border p-3 shadow-sm',
+                isSoldOut && 'opacity-75',
+            )}
+        >
+            <ProductThumbnail image={item.image} name={item.name} className="size-20 rounded-xl" />
+
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1">
+                        <h3 className="text-base leading-snug font-bold">{item.name}</h3>
+                        <span className="bg-orange-100 text-orange-700 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase">
+                            Menú del día
                         </span>
                     </div>
-                )}
-                {isSoldOut && (
-                    <Badge variant="secondary" className="absolute top-3 right-3 shadow-sm">
-                        Agotado
-                    </Badge>
-                )}
-            </div>
-
-            <div className="flex flex-1 flex-col gap-3 p-4">
-                <div className="min-w-0 flex-1 space-y-1">
-                    <h3 className="text-base leading-snug font-semibold">{item.name}</h3>
-                    {item.description && (
-                        <p className="text-muted-foreground line-clamp-2 text-sm leading-relaxed">
-                            {item.description}
-                        </p>
-                    )}
-                    {!item.has_variants && (
-                        <p className="pt-1 text-lg font-semibold tabular-nums">{formatCurrency(item.price)}</p>
-                    )}
+                    <p className={cn('shrink-0 text-base font-bold tabular-nums', storefrontAccent.text)}>
+                        {formatCurrency(displayPrice)}
+                    </p>
                 </div>
 
-                {item.has_variants && item.variants.length > 0 && (
-                    <div className="space-y-2">
-                        <div className="flex flex-wrap gap-1.5">
-                            {item.variants.map((variant) => {
-                                const variantSoldOut = variantSoldOutMap.get(variant.id) ?? false;
+                {item.description && (
+                    <p className="text-muted-foreground line-clamp-2 text-sm leading-relaxed">
+                        {item.description}
+                    </p>
+                )}
 
-                                return (
-                                    <Button
-                                        key={variant.id}
-                                        type="button"
-                                        variant={selectedVariantId === variant.id ? 'default' : 'outline'}
-                                        size="sm"
-                                        disabled={variantSoldOut}
-                                        className={cn(
-                                            'h-auto rounded-full px-2.5 py-1.5 text-xs',
-                                            variantSoldOut && 'opacity-60',
-                                        )}
-                                        onClick={() => {
-                                            setSelectedVariantId(variant.id);
-                                            setLimitMessage(null);
-                                        }}
-                                    >
-                                        <span>{variant.name}</span>
-                                        <span className="ml-1.5 font-semibold tabular-nums">
-                                            {formatCurrency(variant.price)}
-                                        </span>
-                                    </Button>
-                                );
-                            })}
-                        </div>
-                        {selectedVariant && (
-                            <p className="text-base font-semibold tabular-nums">{formatCurrency(displayPrice)}</p>
-                        )}
+                {item.has_variants && item.variants.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                        {item.variants.map((variant) => {
+                            const variantSoldOut = variantSoldOutMap.get(variant.id) ?? false;
+
+                            return (
+                                <button
+                                    key={variant.id}
+                                    type="button"
+                                    disabled={variantSoldOut}
+                                    onClick={() => {
+                                        setSelectedVariantId(variant.id);
+                                        setLimitMessage(null);
+                                    }}
+                                    className={cn(
+                                        'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                                        selectedVariantId === variant.id
+                                            ? cn(storefrontAccent.pill, 'border-transparent')
+                                            : 'border-border bg-background text-foreground hover:bg-muted',
+                                        variantSoldOut && 'cursor-not-allowed opacity-50',
+                                    )}
+                                >
+                                    {variant.name}
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
 
-                <div className="mt-auto space-y-2">
-                    {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
-                    {quantityInCart > 0 && activeStock !== null && (
-                        <p className="text-muted-foreground text-xs">
-                            En tu pedido: {quantityInCart}/{activeStock}
-                        </p>
-                    )}
-                    {isSoldOut ? (
-                        <div className="text-muted-foreground flex h-10 w-full items-center justify-center rounded-xl border border-dashed text-sm font-medium">
+                {limitMessage && <p className="text-destructive text-xs">{limitMessage}</p>}
+                {quantityInCart > 0 && activeStock !== null && (
+                    <p className="text-muted-foreground text-xs">
+                        En tu pedido: {quantityInCart}/{activeStock}
+                    </p>
+                )}
+
+                <div className="mt-auto flex justify-end">
+                    {!menuAvailable ? (
+                        <span className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800 uppercase">
+                            Fuera de horario
+                        </span>
+                    ) : isSoldOut ? (
+                        <span className="text-muted-foreground rounded-full border border-dashed px-4 py-2 text-xs font-semibold uppercase">
                             Agotado
-                        </div>
+                        </span>
                     ) : (
                         <Button
                             type="button"
-                            className="w-full rounded-xl bg-orange-600 hover:bg-orange-700"
+                            size="sm"
+                            className={cn('h-9 rounded-full px-4 text-xs font-bold tracking-wide uppercase', storefrontAccent.button)}
                             disabled={!canAdd}
                             onClick={handleAdd}
                         >
-                            <Plus className="size-4" />
-                            {atStockLimit ? 'Máximo en carrito' : 'Agregar'}
+                            <Plus className="size-3.5" />
+                            {atStockLimit ? 'Máximo' : 'Agregar'}
                         </Button>
                     )}
                 </div>
             </div>
-        </Card>
+        </article>
     );
 }

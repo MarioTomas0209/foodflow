@@ -16,7 +16,7 @@ class OrderController extends Controller
     /**
      * @var list<string>
      */
-    private const STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
+    private const STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'en_route', 'delivered', 'cancelled'];
 
     /**
      * @var list<string>
@@ -30,9 +30,11 @@ class OrderController extends Controller
         $status = $request->query('status', 'all');
         $type = $request->query('type', 'all');
         $date = $request->query('date', today()->toDateString());
+        $search = strtoupper(ltrim(trim((string) $request->query('search', '')), '#'));
 
         $request->validate([
             'date' => ['nullable', 'date', 'before_or_equal:today'],
+            'search' => ['nullable', 'string', 'max:26'],
         ]);
 
         if ($status !== 'all') {
@@ -49,8 +51,13 @@ class OrderController extends Controller
 
         $query = $organization->orders()
             ->with('items')
-            ->whereDate('created_at', $date)
             ->latest();
+
+        if ($search !== '') {
+            $query->whereRaw('UPPER(id) LIKE ?', ['%'.$search.'%']);
+        } else {
+            $query->whereDate('created_at', $date);
+        }
 
         if ($status !== 'all' && $status !== null && $status !== '') {
             $query->where('status', $status);
@@ -72,6 +79,7 @@ class OrderController extends Controller
                 'status' => $status,
                 'type' => $type,
                 'date' => $date,
+                'search' => $search,
             ],
         ]);
     }

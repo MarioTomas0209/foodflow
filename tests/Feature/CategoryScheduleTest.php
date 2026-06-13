@@ -205,8 +205,8 @@ test('informative schedule allows orders outside configured hours', function () 
     Carbon::setTestNow();
 });
 
-test('restricted schedule blocks orders outside configured hours', function () {
-    Carbon::setTestNow(Carbon::parse('2026-06-09 12:00:00')); // lunes, fuera de desayuno
+test('restricted schedule blocks orders after closing time', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-09 12:00:00')); // lunes, después de desayuno
 
     $user = User::factory()->create();
 
@@ -224,6 +224,60 @@ test('restricted schedule blocks orders outside configured hours', function () {
         'available_until' => '11:00:00',
         'available_days' => [1, 2, 3, 4, 5],
         'schedule_type' => 'restricted',
+    ]);
+
+    expect($category->isAvailableNow())->toBeFalse()
+        ->and($category->canOrderNow())->toBeFalse();
+
+    Carbon::setTestNow();
+});
+
+test('restricted schedule allows orders before opening time', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-09 07:30:00')); // lunes, antes de desayuno
+
+    $user = User::factory()->create();
+
+    $category = Category::create([
+        'organization_id' => Organization::create([
+            'owner_id' => $user->id,
+            'name' => 'Pedido anticipado restringido',
+            'slug' => 'anticipado-restringido',
+            'status' => 'active',
+        ])->id,
+        'name' => 'Desayunos',
+        'is_active' => true,
+        'sort_order' => 0,
+        'available_from' => '08:00:00',
+        'available_until' => '11:00:00',
+        'available_days' => [1, 2, 3, 4, 5],
+        'schedule_type' => 'restricted',
+    ]);
+
+    expect($category->isAvailableNow())->toBeFalse()
+        ->and($category->canOrderNow())->toBeTrue();
+
+    Carbon::setTestNow();
+});
+
+test('informative schedule blocks orders after closing time', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-09 18:00:00')); // lunes, después de comida
+
+    $user = User::factory()->create();
+
+    $category = Category::create([
+        'organization_id' => Organization::create([
+            'owner_id' => $user->id,
+            'name' => 'Comida cerrada',
+            'slug' => 'comida-cerrada',
+            'status' => 'active',
+        ])->id,
+        'name' => 'Comidas',
+        'is_active' => true,
+        'sort_order' => 0,
+        'available_from' => '13:00:00',
+        'available_until' => '17:00:00',
+        'available_days' => [1, 2, 3, 4, 5],
+        'schedule_type' => 'informative',
     ]);
 
     expect($category->isAvailableNow())->toBeFalse()
@@ -355,6 +409,51 @@ test('storefront allows orders for informative schedules outside hours', functio
         ->assertInertia(fn (Assert $page) => $page
             ->has('categories', 1)
             ->where('categories.0.schedule_type', 'informative')
+            ->where('categories.0.is_available_now', false)
+            ->where('categories.0.can_order_now', true)
+        );
+
+    Carbon::setTestNow();
+});
+
+test('storefront allows restricted orders before opening hours', function () {
+    Carbon::setTestNow(Carbon::parse('2026-06-09 07:30:00')); // lunes, antes de desayuno
+
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Anticipado restringido storefront',
+        'slug' => 'anticipado-restringido-storefront',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Desayunos',
+        'is_active' => true,
+        'sort_order' => 0,
+        'available_from' => '08:00:00',
+        'available_until' => '11:00:00',
+        'available_days' => [1, 2, 3, 4, 5],
+        'schedule_type' => 'restricted',
+    ]);
+
+    Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Huevos',
+        'price' => 45,
+        'has_variants' => false,
+        'stock' => 10,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->get(route('storefront.show', $organization->slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('categories', 1)
             ->where('categories.0.is_available_now', false)
             ->where('categories.0.can_order_now', true)
         );

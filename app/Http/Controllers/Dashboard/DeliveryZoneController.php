@@ -71,6 +71,7 @@ class DeliveryZoneController extends Controller
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'fee' => ['required', 'numeric', 'min:0'],
             'center_lat' => ['required', 'numeric', 'between:-90,90'],
             'center_lng' => ['required', 'numeric', 'between:-180,180'],

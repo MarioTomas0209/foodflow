@@ -121,6 +121,43 @@ test('authenticated users can view todays orders index', function () {
             ->where('filters.status', 'all')
             ->where('filters.type', 'all')
             ->where('filters.date', today()->toDateString())
+            ->where('filters.search', '')
+        );
+});
+
+test('orders index can search by short order number', function () {
+    [$user, $organization] = createDashboardUser();
+
+    $todayOrder = createOrderForOrganization($organization, ['customer_name' => 'Hoy']);
+    $yesterdayOrder = createOrderForOrganization($organization, ['customer_name' => 'Ayer']);
+    $yesterdayOrder->forceFill(['created_at' => now()->subDay()])->save();
+
+    $searchTerm = strtoupper(substr($yesterdayOrder->id, -4));
+
+    $this->actingAs($user)
+        ->get(route('dashboard.orders.index', ['search' => $searchTerm]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 1)
+            ->where('orders.data.0.id', $yesterdayOrder->id)
+            ->where('filters.search', $searchTerm)
+        );
+});
+
+test('orders index can search with hash prefix', function () {
+    [$user, $organization] = createDashboardUser();
+
+    $order = createOrderForOrganization($organization, ['customer_name' => 'Buscar este']);
+
+    $searchTerm = '#'.strtoupper(substr($order->id, -4));
+
+    $this->actingAs($user)
+        ->get(route('dashboard.orders.index', ['search' => $searchTerm]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 1)
+            ->where('orders.data.0.customer_name', 'Buscar este')
+            ->where('filters.search', ltrim($searchTerm, '#'))
         );
 });
 
@@ -232,6 +269,42 @@ test('authenticated users can update order status', function () {
         ->assertSessionHas('success');
 
     expect($order->fresh()->status)->toBe('preparing');
+});
+
+test('delivery orders can be marked as en route', function () {
+    [$user, $organization] = createDashboardUser();
+    $order = createOrderForOrganization($organization, [
+        'status' => 'ready',
+        'type' => 'delivery',
+        'delivery_address' => 'Calle 1',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('dashboard.orders.update-status', $order), [
+            'status' => 'en_route',
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect($order->fresh()->status)->toBe('en_route');
+});
+
+test('pickup orders can be marked as en route', function () {
+    [$user, $organization] = createDashboardUser();
+    $order = createOrderForOrganization($organization, [
+        'status' => 'ready',
+        'type' => 'pickup',
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('dashboard.orders.update-status', $order), [
+            'status' => 'en_route',
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect($order->fresh()->status)->toBe('en_route');
 });
 
 test('users cannot update orders from another organization', function () {

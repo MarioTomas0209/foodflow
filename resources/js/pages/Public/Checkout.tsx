@@ -1,5 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, LoaderCircle, MapPin, RefreshCw } from 'lucide-react';
+import { ArrowLeft, LoaderCircle, MapPin } from 'lucide-react';
 import { FormEventHandler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import InputError from '@/components/input-error';
@@ -22,14 +22,174 @@ import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
 import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
 import { getPreorderWindow, type CartContext } from '@/lib/preorder';
+import { storefrontAccent } from '@/lib/storefront-theme';
+import { cn } from '@/lib/utils';
 import PublicLayout from '@/layouts/PublicLayout';
 import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { type CartItem, type CartSource, type Customer, type CustomerAddress, type PublicOrganization } from '@/types';
 
 const DEFAULT_DELIVERY_CITY = 'Comitán de Domínguez, Chiapas';
+const inputClassName = 'rounded-xl';
 
 function flattenFormErrors(errors: Record<string, string | string[]>): string[] {
     return Object.values(errors).flatMap((message) => (Array.isArray(message) ? message : [message])).filter(Boolean);
+}
+
+function CheckoutCard({
+    title,
+    children,
+    className,
+}: {
+    title?: string;
+    children: React.ReactNode;
+    className?: string;
+}) {
+    return (
+        <section className={cn('border-border bg-card space-y-4 rounded-2xl border p-4 shadow-sm', className)}>
+            {title && (
+                <h2 className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">{title}</h2>
+            )}
+            {children}
+        </section>
+    );
+}
+
+function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
+    return (
+        <Label htmlFor={htmlFor} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+            {children}
+        </Label>
+    );
+}
+
+function OptionButton({
+    selected,
+    children,
+    onClick,
+    disabled,
+}: {
+    selected: boolean;
+    children: React.ReactNode;
+    onClick: () => void;
+    disabled?: boolean;
+}) {
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className={cn(
+                'h-auto rounded-2xl border py-4 font-semibold',
+                selected && storefrontAccent.buttonOnOutline,
+            )}
+            onClick={onClick}
+            disabled={disabled}
+        >
+            {children}
+        </Button>
+    );
+}
+
+function zoneLabel(zone: Zone): string {
+    return `${zone.name} — ${formatCurrency(zone.fee)}`;
+}
+
+function ZoneSelectField({
+    id,
+    zones,
+    value,
+    onChange,
+    disabled,
+    detectedZone,
+    lockZone,
+}: {
+    id: string;
+    zones: Zone[];
+    value: string;
+    onChange: (zoneId: string) => void;
+    disabled?: boolean;
+    detectedZone?: Zone | null;
+    lockZone?: boolean;
+}) {
+    const selectedZone =
+        lockZone && detectedZone ? detectedZone : (zones.find((zone) => zone.id === value) ?? null);
+
+    if (lockZone && detectedZone) {
+        return (
+            <div
+                id={id}
+                className={cn(
+                    'rounded-xl border p-3',
+                    storefrontAccent.cardActive,
+                    'bg-orange-50/60 dark:bg-orange-950/25',
+                )}
+            >
+                <p className="text-sm font-semibold">{zoneLabel(detectedZone)}</p>
+                {detectedZone.description && (
+                    <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{detectedZone.description}</p>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+                <SelectTrigger id={id} className={inputClassName}>
+                    <SelectValue placeholder="Selecciona tu zona" />
+                </SelectTrigger>
+                <SelectContent>
+                    {zones.map((zone) => (
+                        <SelectItem key={zone.id} value={zone.id}>
+                            {zoneLabel(zone)}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            {selectedZone && (
+                <div
+                    className={cn(
+                        'rounded-xl border p-3',
+                        storefrontAccent.cardActive,
+                        'bg-orange-50/60 dark:bg-orange-950/25',
+                    )}
+                >
+                    <p className="text-sm font-semibold">{zoneLabel(selectedZone)}</p>
+                    {selectedZone.description && (
+                        <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{selectedZone.description}</p>
+                    )}
+                </div>
+            )}
+        </>
+    );
+}
+
+function DeliveryZoneMessages({
+    hasCoords,
+    detectedZone,
+}: {
+    hasCoords: boolean;
+    detectedZone: Zone | null;
+}) {
+    if (hasCoords && detectedZone) {
+        return (
+            <p className="text-sm text-green-700 dark:text-green-400">
+                Zona asignada según tu ubicación: {detectedZone.name}. El costo de envío se calcula con esta zona.
+            </p>
+        );
+    }
+
+    if (hasCoords && !detectedZone) {
+        return (
+            <p className="text-amber-700 text-sm dark:text-amber-400">
+                Tu ubicación no coincide con ninguna zona automática. Selecciona tu zona manualmente.
+            </p>
+        );
+    }
+
+    return (
+        <p className="text-muted-foreground text-sm">Selecciona la zona donde recibirás tu pedido.</p>
+    );
 }
 
 interface CheckoutProps {
@@ -310,17 +470,24 @@ export default function Checkout({ organization, zones, customer, addresses, car
         }
     }, [data.is_preorder, preorderWindow, setData]);
 
+    const hasLocatedCoords =
+        locationStatus === 'success' && data.latitude !== null && data.longitude !== null;
+
+    const gpsZone = useMemo(() => {
+        if (!hasLocatedCoords) {
+            return null;
+        }
+
+        return findZoneForCoords(zones, data.latitude!, data.longitude!);
+    }, [hasLocatedCoords, data.latitude, data.longitude, zones]);
+
     const matchedZone = useMemo(() => {
         if (data.type !== 'delivery') {
             return null;
         }
 
-        if (locationStatus === 'success' && data.latitude !== null && data.longitude !== null) {
-            const gpsZone = findZoneForCoords(zones, data.latitude, data.longitude);
-
-            if (gpsZone) {
-                return gpsZone;
-            }
+        if (hasLocatedCoords && gpsZone) {
+            return gpsZone;
         }
 
         if (data.zone_id) {
@@ -328,15 +495,9 @@ export default function Checkout({ organization, zones, customer, addresses, car
         }
 
         return null;
-    }, [data.type, data.latitude, data.longitude, data.zone_id, locationStatus, zones]);
+    }, [data.type, data.zone_id, gpsZone, hasLocatedCoords, zones]);
 
-    const gpsZone = useMemo(() => {
-        if (locationStatus !== 'success' || data.latitude === null || data.longitude === null) {
-            return null;
-        }
-
-        return findZoneForCoords(zones, data.latitude, data.longitude);
-    }, [locationStatus, data.latitude, data.longitude, zones]);
+    const lockDeliveryZone = hasLocatedCoords && gpsZone !== null;
 
     const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
     const orderTotal = subtotal + deliveryFee;
@@ -348,7 +509,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
         e.preventDefault();
 
         post(route('storefront.orders.store', organization.slug), {
-            preserveScroll: true,
             onSuccess: () => clearCartStorage(),
             onError: () => {
                 errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -367,33 +527,36 @@ export default function Checkout({ organization, zones, customer, addresses, car
     }
 
     return (
-        <PublicLayout organization={organization}>
+        <PublicLayout organization={organization} className="pb-8">
             <Head title={`Checkout — ${organization.name}`} />
 
-            <div className="flex flex-col gap-6 pb-8">
-                <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-fit px-0"
-                    onClick={() => router.visit(route('storefront.show', organization.slug))}
-                >
-                    <ArrowLeft className="size-4" />
-                    Volver al menú
-                </Button>
+            <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-10 shrink-0 rounded-full"
+                        onClick={() => router.visit(route('storefront.show', organization.slug))}
+                    >
+                        <ArrowLeft className="size-4" />
+                        <span className="sr-only">Volver al menú</span>
+                    </Button>
 
-                <div>
-                    <h1 className="text-2xl font-semibold">Confirmar pedido</h1>
-                    <p className="text-muted-foreground mt-1 text-sm">Completa tus datos para finalizar.</p>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Confirmar pedido</h1>
+                        <p className="text-muted-foreground mt-1 text-sm">Completa tus datos para finalizar.</p>
+                    </div>
                 </div>
 
                 {formErrors.length > 0 && (
                     <div
                         ref={errorBannerRef}
                         role="alert"
-                        className="border-destructive/40 bg-destructive/10 space-y-2 rounded-xl border p-4 text-sm"
+                        className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
                     >
-                        <p className="text-destructive font-medium">No pudimos confirmar tu pedido</p>
-                        <ul className="text-destructive/90 list-inside list-disc space-y-1">
+                        <p className="font-semibold">No pudimos confirmar tu pedido</p>
+                        <ul className="list-inside list-disc space-y-1 opacity-90">
                             {formErrors.map((message) => (
                                 <li key={message}>{message}</li>
                             ))}
@@ -401,14 +564,13 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     </div>
                 )}
 
-                <form onSubmit={submit} noValidate className="flex flex-col gap-6">
-                    <section className="space-y-4">
-                        <h2 className="text-lg font-semibold">Tus datos</h2>
-
+                <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+                    <CheckoutCard title="Tus datos">
                         <div className="grid gap-2">
-                            <Label htmlFor="customer-name">Nombre completo</Label>
+                            <FieldLabel htmlFor="customer-name">Nombre completo</FieldLabel>
                             <Input
                                 id="customer-name"
+                                className={inputClassName}
                                 value={data.customer_name}
                                 onChange={(e) => setData('customer_name', e.target.value)}
                                 disabled={processing}
@@ -418,10 +580,11 @@ export default function Checkout({ organization, zones, customer, addresses, car
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="customer-phone">Teléfono</Label>
+                            <FieldLabel htmlFor="customer-phone">Teléfono</FieldLabel>
                             <Input
                                 id="customer-phone"
                                 type="tel"
+                                className={inputClassName}
                                 value={data.customer_phone}
                                 onChange={(e) => setData('customer_phone', e.target.value)}
                                 disabled={processing}
@@ -429,16 +592,13 @@ export default function Checkout({ organization, zones, customer, addresses, car
                             />
                             <InputError message={errors.customer_phone} />
                         </div>
-                    </section>
+                    </CheckoutCard>
 
-                    <section className="space-y-3">
-                        <h2 className="text-lg font-semibold">Tipo de entrega</h2>
+                    <CheckoutCard title="Tipo de entrega">
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <Button
-                                type="button"
-                                variant={data.type === 'pickup' ? 'default' : 'outline'}
-                                size="lg"
-                                className="h-auto rounded-xl py-4"
+                            <OptionButton
+                                selected={data.type === 'pickup'}
+                                disabled={processing}
                                 onClick={() => {
                                     setData((current) => ({
                                         ...current,
@@ -456,15 +616,12 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                     setMapsLinkInput('');
                                     setMapsLinkError(null);
                                 }}
-                                disabled={processing}
                             >
                                 Recoger en sucursal
-                            </Button>
-                            <Button
-                                type="button"
-                                variant={data.type === 'delivery' ? 'default' : 'outline'}
-                                size="lg"
-                                className="h-auto rounded-xl py-4"
+                            </OptionButton>
+                            <OptionButton
+                                selected={data.type === 'delivery'}
+                                disabled={processing}
                                 onClick={() => {
                                     setData((current) => ({
                                         ...current,
@@ -483,26 +640,28 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                         setUseCustomAddress(true);
                                     }
                                 }}
-                                disabled={processing}
                             >
                                 A domicilio
-                            </Button>
+                            </OptionButton>
                         </div>
                         <InputError message={errors.type} />
-                    </section>
+                    </CheckoutCard>
 
                     {data.type === 'delivery' && (
-                        <section className="space-y-4">
+                        <CheckoutCard title="Dirección de entrega">
                             {showSavedAddresses && (
                                 <div className="space-y-3">
-                                    <h3 className="font-semibold">Tus direcciones</h3>
+                                    <p className="text-sm font-semibold">Tus direcciones</p>
                                     <div className="grid gap-2">
                                         {addresses.map((address) => (
                                             <Button
                                                 key={address.id}
                                                 type="button"
-                                                variant={data.address_id === address.id ? 'default' : 'outline'}
-                                                className="h-auto justify-start rounded-xl px-4 py-3 text-left"
+                                                variant="outline"
+                                                className={cn(
+                                                    'h-auto justify-start rounded-2xl px-4 py-3 text-left',
+                                                    data.address_id === address.id && storefrontAccent.buttonOnOutline,
+                                                )}
                                                 onClick={() => selectSavedAddress(address)}
                                                 disabled={processing}
                                             >
@@ -513,7 +672,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                                     <p className={address.label ? 'text-sm opacity-90' : 'font-medium'}>
                                                         {address.address}
                                                     </p>
-                                                    <p className="text-muted-foreground text-xs">{address.city}</p>
+                                                    <p className="text-xs opacity-80">{address.city}</p>
                                                 </div>
                                             </Button>
                                         ))}
@@ -522,7 +681,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        className="px-0"
+                                        className={cn('px-0', storefrontAccent.text)}
                                         onClick={clearSavedAddressSelection}
                                         disabled={processing}
                                     >
@@ -534,9 +693,10 @@ export default function Checkout({ organization, zones, customer, addresses, car
                             {showDeliveryForm && (
                                 <>
                             <div className="grid gap-2">
-                                <Label htmlFor="delivery-address">Dirección</Label>
+                                <FieldLabel htmlFor="delivery-address">Dirección</FieldLabel>
                                 <Input
                                     id="delivery-address"
+                                    className={inputClassName}
                                     value={data.delivery_address}
                                     onChange={(e) => setData('delivery_address', e.target.value)}
                                     disabled={processing}
@@ -546,70 +706,46 @@ export default function Checkout({ organization, zones, customer, addresses, car
                             </div>
 
                             <div className="grid gap-2">
-                                <Label htmlFor="delivery-city">Ciudad</Label>
+                                <FieldLabel htmlFor="delivery-city">Ciudad</FieldLabel>
                                 <Input
                                     id="delivery-city"
+                                    className={cn(inputClassName, 'bg-muted cursor-not-allowed')}
                                     value={DEFAULT_DELIVERY_CITY}
                                     readOnly
                                     disabled
                                     tabIndex={-1}
-                                    className="bg-muted cursor-not-allowed"
                                 />
-                                <p className="text-muted-foreground text-xs">
-                                    Por ahora solo entregamos en {DEFAULT_DELIVERY_CITY}.
-                                </p>
                                 <InputError message={errors.delivery_city} />
                             </div>
 
                             {zones.length > 0 && (
                                 <div className="grid gap-2">
-                                    <Label htmlFor="delivery-zone">Zona de entrega</Label>
-                                    {gpsZone && (
-                                        <p className="text-sm text-green-700 dark:text-green-400">
-                                            Zona detectada: {gpsZone.name}. Puedes cambiarla si no es correcta.
-                                        </p>
-                                    )}
-                                    {locationStatus === 'success' && !gpsZone && (
-                                        <p className="text-muted-foreground text-sm">
-                                            No detectamos cobertura en tu ubicación. Selecciona tu zona manualmente.
-                                        </p>
-                                    )}
-                                    {!gpsZone && locationStatus !== 'success' && (
-                                        <p className="text-muted-foreground text-sm">
-                                            Selecciona la zona donde recibirás tu pedido.
-                                        </p>
-                                    )}
-                                    <Select
-                                        value={data.zone_id || undefined}
-                                        onValueChange={(id) => {
+                                    <FieldLabel htmlFor="delivery-zone">Zona de entrega</FieldLabel>
+                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
+                                    <ZoneSelectField
+                                        id="delivery-zone"
+                                        zones={zones}
+                                        value={data.zone_id}
+                                        detectedZone={gpsZone}
+                                        lockZone={lockDeliveryZone}
+                                        disabled={processing}
+                                        onChange={(zoneId) => {
                                             setData((current) => ({
                                                 ...current,
-                                                zone_id: id,
+                                                zone_id: zoneId,
                                             }));
                                         }}
-                                        disabled={processing}
-                                    >
-                                        <SelectTrigger id="delivery-zone">
-                                            <SelectValue placeholder="Selecciona tu zona" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {zones.map((zone) => (
-                                                <SelectItem key={zone.id} value={zone.id}>
-                                                    {zone.name} — {formatCurrency(zone.fee)}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    />
                                     <InputError message={errors.delivery_address} />
                                     <InputError message={errors.zone_id} />
                                 </div>
                             )}
 
-                            <div className="bg-muted/40 space-y-3 rounded-xl border p-4">
+                            <div className="bg-muted/40 space-y-3 rounded-2xl border p-4">
                                 <div className="flex items-start gap-3">
-                                    <MapPin className="text-primary mt-0.5 size-5 shrink-0" />
+                                    <MapPin className={cn('mt-0.5 size-5 shrink-0', storefrontAccent.text)} />
                                     <div className="space-y-1 text-sm">
-                                        <p className="font-medium">Ubicación exacta (opcional)</p>
+                                        <p className="font-semibold">Ubicación exacta (opcional)</p>
                                         <p className="text-muted-foreground">
                                             Pega un enlace de Google Maps para
                                             ayudar al repartidor a llegar con precisión.
@@ -643,8 +779,12 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                                     }
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-primary bg-blue-500 p-1 rounded-md font-medium underline-offset-4 hover:underline"
+                                                    className={cn(
+                                                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
+                                                        storefrontAccent.pillMuted,
+                                                    )}
                                                 >
+                                                    <MapPin className="size-3.5" />
                                                     Ver ubicación en Google Maps
                                                 </a>
                                             </p>
@@ -669,11 +809,12 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                 )}
 
                                 <div className="grid gap-2">
-                                    <Label htmlFor="maps-link">Enlace de Google Maps</Label>
+                                    <FieldLabel htmlFor="maps-link">Enlace de Google Maps</FieldLabel>
                                     <Input
                                         id="maps-link"
                                         type="text"
                                         inputMode="url"
+                                        className={inputClassName}
                                         value={mapsLinkInput}
                                         onChange={(e) => {
                                             setMapsLinkInput(e.target.value);
@@ -743,6 +884,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                     </label>
                                     {data.save_address && (
                                         <Input
+                                            className={inputClassName}
                                             placeholder="Ej: Casa, Trabajo (opcional)"
                                             value={data.address_label}
                                             onChange={(e) => setData('address_label', e.target.value)}
@@ -756,38 +898,27 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
                             {showSavedAddresses && data.address_id && zones.length > 0 && (
                                 <div className="grid gap-2">
-                                    <Label htmlFor="delivery-zone-saved">Zona de entrega</Label>
-                                    {gpsZone && (
-                                        <p className="text-sm text-green-700 dark:text-green-400">
-                                            Zona detectada: {gpsZone.name}. Puedes cambiarla si no es correcta.
-                                        </p>
-                                    )}
-                                    <Select
-                                        value={data.zone_id || undefined}
-                                        onValueChange={(id) => {
+                                    <FieldLabel htmlFor="delivery-zone-saved">Zona de entrega</FieldLabel>
+                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
+                                    <ZoneSelectField
+                                        id="delivery-zone-saved"
+                                        zones={zones}
+                                        value={data.zone_id}
+                                        detectedZone={gpsZone}
+                                        lockZone={lockDeliveryZone}
+                                        disabled={processing}
+                                        onChange={(zoneId) => {
                                             setData((current) => ({
                                                 ...current,
-                                                zone_id: id,
+                                                zone_id: zoneId,
                                             }));
                                         }}
-                                        disabled={processing}
-                                    >
-                                        <SelectTrigger id="delivery-zone-saved">
-                                            <SelectValue placeholder="Selecciona tu zona" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {zones.map((zone) => (
-                                                <SelectItem key={zone.id} value={zone.id}>
-                                                    {zone.name} — {formatCurrency(zone.fee)}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    />
                                     <InputError message={errors.delivery_address} />
                                     <InputError message={errors.zone_id} />
                                 </div>
                             )}
-                        </section>
+                        </CheckoutCard>
                     )}
 
                     {preorderWindow && (
@@ -847,69 +978,63 @@ export default function Checkout({ organization, zones, customer, addresses, car
                         </section>
                     )}
 
-                    <section className="space-y-3">
-                        <h2 className="text-lg font-semibold">Método de pago</h2>
+                    <CheckoutCard title="Método de pago">
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <Button
-                                type="button"
-                                variant={data.payment_method === 'cash' ? 'default' : 'outline'}
-                                size="lg"
-                                className="h-auto rounded-xl py-4"
-                                onClick={() => setData('payment_method', 'cash')}
+                            <OptionButton
+                                selected={data.payment_method === 'cash'}
                                 disabled={processing}
+                                onClick={() => setData('payment_method', 'cash')}
                             >
                                 Efectivo
-                            </Button>
-                            <Button
-                                type="button"
-                                variant={data.payment_method === 'transfer' ? 'default' : 'outline'}
-                                size="lg"
-                                className="h-auto rounded-xl py-4"
-                                onClick={() => setData('payment_method', 'transfer')}
+                            </OptionButton>
+                            <OptionButton
+                                selected={data.payment_method === 'transfer'}
                                 disabled={processing}
+                                onClick={() => setData('payment_method', 'transfer')}
                             >
                                 Transferencia
-                            </Button>
+                            </OptionButton>
                         </div>
                         <InputError message={errors.payment_method} />
-                    </section>
+                    </CheckoutCard>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="customer-notes">Notas (opcional)</Label>
-                        <FormTextarea
-                            id="customer-notes"
-                            rows={3}
-                            value={data.customer_notes}
-                            onChange={(e) => setData('customer_notes', e.target.value)}
-                            disabled={processing}
-                            placeholder="Instrucciones especiales para tu pedido"
-                        />
-                        <InputError message={errors.customer_notes} />
-                    </div>
+                    <CheckoutCard title="Notas">
+                        <div className="grid gap-2">
+                            <FormTextarea
+                                id="customer-notes"
+                                rows={3}
+                                className={inputClassName}
+                                value={data.customer_notes}
+                                onChange={(e) => setData('customer_notes', e.target.value)}
+                                disabled={processing}
+                                placeholder="Instrucciones especiales para tu pedido"
+                            />
+                            <InputError message={errors.customer_notes} />
+                        </div>
+                    </CheckoutCard>
 
-                    <section className="bg-muted/40 space-y-3 rounded-xl border p-4">
-                        <h2 className="text-lg font-semibold">Resumen del pedido</h2>
-                        <ul className="space-y-2">
+                    <CheckoutCard title="Resumen del pedido">
+                        <ul className="space-y-3">
                             {cartItems.map((item) => (
                                 <li
                                     key={`${item.source}:${item.productId}:${item.variantId ?? 'base'}`}
-                                    className="flex items-start gap-3 text-sm"
+                                    className="flex items-start gap-3"
                                 >
                                     <ProductThumbnail
                                         image={item.productImage}
                                         name={item.productName}
-                                        className="size-12"
+                                        className="size-12 rounded-xl"
                                     />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="font-medium">{item.productName}</p>
+                                            <div className="min-w-0">
+                                                <p className="font-bold leading-snug">{item.productName}</p>
                                                 {item.variantName && (
-                                                    <p className="text-muted-foreground">{item.variantName}</p>
+                                                    <p className="text-muted-foreground text-sm">{item.variantName}</p>
                                                 )}
-                                                <p className="text-muted-foreground">x{item.quantity}</p>
+                                                <p className="text-muted-foreground text-sm">x{item.quantity}</p>
                                             </div>
-                                            <span className="font-medium tabular-nums">
+                                            <span className={cn('shrink-0 font-bold tabular-nums', storefrontAccent.text)}>
                                                 {formatCurrency(item.price * item.quantity)}
                                             </span>
                                         </div>
@@ -917,26 +1042,37 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                 </li>
                             ))}
                         </ul>
+
                         <Separator />
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Subtotal</span>
-                            <span className="font-medium tabular-nums">{formatCurrency(subtotal)}</span>
-                        </div>
-                        {data.type === 'delivery' && matchedZone && (
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">Costo de envío</span>
-                                <span className="font-medium tabular-nums">{formatCurrency(deliveryFee)}</span>
+
+                        <div className="space-y-2 text-sm">
+                            <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Subtotal</span>
+                                <span className="font-medium tabular-nums">{formatCurrency(subtotal)}</span>
                             </div>
-                        )}
-                        <div className="flex items-center justify-between">
-                            <span className="font-semibold">Total</span>
-                            <span className="text-lg font-semibold tabular-nums">{formatCurrency(orderTotal)}</span>
+                            {data.type === 'delivery' && matchedZone && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Costo de envío</span>
+                                    <span className="font-medium tabular-nums">{formatCurrency(deliveryFee)}</span>
+                                </div>
+                            )}
+                            <div className="flex items-center justify-between pt-1">
+                                <span className="text-base font-bold">Total</span>
+                                <span className={cn('text-xl font-bold tabular-nums', storefrontAccent.text)}>
+                                    {formatCurrency(orderTotal)}
+                                </span>
+                            </div>
                         </div>
-                    </section>
+                    </CheckoutCard>
 
                     <InputError message={errors.items} />
 
-                    <Button type="submit" size="lg" className="w-full rounded-xl" disabled={!canSubmit}>
+                    <Button
+                        type="submit"
+                        size="lg"
+                        className={cn('h-12 w-full rounded-full text-base font-semibold', storefrontAccent.button)}
+                        disabled={!canSubmit}
+                    >
                         {processing && <LoaderCircle className="size-4 animate-spin" />}
                         Confirmar pedido
                     </Button>

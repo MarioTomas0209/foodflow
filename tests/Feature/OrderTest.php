@@ -551,6 +551,67 @@ test('delivery orders reject addresses outside coverage zones', function () {
     expect(Order::query()->count())->toBe(0);
 });
 
+test('delivery orders reject manual zone when coordinates are outside coverage', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Zona manual bloqueada',
+        'slug' => 'zona-manual-bloqueada',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Platillos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Torta',
+        'price' => 50,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $zone = DeliveryZone::create([
+        'organization_id' => $organization->id,
+        'name' => 'Centro',
+        'fee' => 30,
+        'center_lat' => 16.2520,
+        'center_lng' => -92.1350,
+        'radius_km' => 1,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $this->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'María',
+        'customer_phone' => '5511334455',
+        'type' => 'delivery',
+        'delivery_address' => 'Lejos del centro',
+        'delivery_city' => 'Comitán de Domínguez, Chiapas',
+        'latitude' => 19.4326,
+        'longitude' => -99.1332,
+        'zone_id' => $zone->id,
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertSessionHasErrors('delivery_address');
+
+    expect(Order::query()->count())->toBe(0);
+});
+
 test('placing an order broadcasts NewOrderReceived on the organization channel', function () {
     Event::fake([NewOrderReceived::class]);
 

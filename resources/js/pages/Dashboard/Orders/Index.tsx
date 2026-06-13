@@ -1,5 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Package } from 'lucide-react';
+import { Package, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ProductThumbnail } from '@/components/storefront/ProductThumbnail';
 import { formatCurrency } from '@/lib/format-currency';
 import {
+    formatOrderDisplayNumber,
     ORDER_STATUS_LABELS,
     ORDER_STATUSES,
     ORDER_TYPE_LABELS,
@@ -25,10 +27,14 @@ interface OrdersIndexProps {
 
 export default function Index({ orders, filters }: OrdersIndexProps) {
     const { today } = usePage<SharedData>().props;
+    const [searchInput, setSearchInput] = useState(filters.search ?? '');
+    const isSearching = (filters.search ?? '').length > 0;
     const isToday = filters.date === today;
-    const title = isToday
-        ? 'Pedidos de hoy'
-        : `Pedidos del ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'long' }).format(new Date(`${filters.date}T12:00:00`))}`;
+    const title = isSearching
+        ? 'Buscar pedido'
+        : isToday
+          ? 'Pedidos de hoy'
+          : `Pedidos del ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'long' }).format(new Date(`${filters.date}T12:00:00`))}`;
 
     const applyFilters = (next: Partial<OrderFilters>) => {
         router.get(
@@ -38,6 +44,18 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
         );
     };
 
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            const normalizedSearch = searchInput.trim().replace(/^#/, '').toUpperCase();
+
+            if (normalizedSearch !== (filters.search ?? '')) {
+                applyFilters({ search: normalizedSearch });
+            }
+        }, 300);
+
+        return () => window.clearTimeout(timeout);
+    }, [searchInput, filters.search]);
+
     return (
         <DashboardLayout>
             <Head title="Pedidos" />
@@ -46,59 +64,89 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
                     <p className="text-muted-foreground mt-1 text-sm">
-                        {isToday
-                            ? 'Gestiona los pedidos recibidos hoy en tu negocio.'
-                            : 'Consulta los pedidos recibidos en la fecha seleccionada.'}
+                        {isSearching
+                            ? 'Busca por el número corto del pedido, por ejemplo #A1B2.'
+                            : isToday
+                              ? 'Gestiona los pedidos recibidos hoy en tu negocio.'
+                              : 'Consulta los pedidos recibidos en la fecha seleccionada.'}
                     </p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-3">
                     <div className="grid gap-2">
-                        <label htmlFor="status-filter" className="text-sm font-medium">
-                            Estado
+                        <label htmlFor="order-search" className="text-sm font-medium">
+                            Buscar pedido
                         </label>
-                        <Select value={filters.status} onValueChange={(status) => applyFilters({ status: status as OrderFilters['status'] })}>
-                            <SelectTrigger id="status-filter">
-                                <SelectValue placeholder="Todos los estados" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos</SelectItem>
-                                {ORDER_STATUSES.map((status) => (
-                                    <SelectItem key={status} value={status}>
-                                        {ORDER_STATUS_LABELS[status]}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="relative">
+                            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                            <Input
+                                id="order-search"
+                                type="search"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Buscar por #XXXX o ID completo"
+                                className="pl-9"
+                            />
+                        </div>
                     </div>
 
-                    <div className="grid gap-2">
-                        <label htmlFor="type-filter" className="text-sm font-medium">
-                            Tipo de entrega
-                        </label>
-                        <Select value={filters.type} onValueChange={(type) => applyFilters({ type: type as OrderFilters['type'] })}>
-                            <SelectTrigger id="type-filter">
-                                <SelectValue placeholder="Todos los tipos" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos</SelectItem>
-                                <SelectItem value="pickup">{ORDER_TYPE_LABELS.pickup}</SelectItem>
-                                <SelectItem value="delivery">{ORDER_TYPE_LABELS.delivery}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="grid gap-2">
+                            <label htmlFor="status-filter" className="text-sm font-medium">
+                                Estado
+                            </label>
+                            <Select
+                                value={filters.status}
+                                onValueChange={(status) =>
+                                    applyFilters({ status: status as OrderFilters['status'] })
+                                }
+                            >
+                                <SelectTrigger id="status-filter">
+                                    <SelectValue placeholder="Todos los estados" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    {ORDER_STATUSES.map((status) => (
+                                        <SelectItem key={status} value={status}>
+                                            {ORDER_STATUS_LABELS[status]}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    <div className="grid gap-2">
-                        <label htmlFor="date-filter" className="text-sm font-medium">
-                            Fecha
-                        </label>
-                        <Input
-                            id="date-filter"
-                            type="date"
-                            value={filters.date}
-                            max={today}
-                            onChange={(e) => applyFilters({ date: e.target.value })}
-                        />
+                        <div className="grid gap-2">
+                            <label htmlFor="type-filter" className="text-sm font-medium">
+                                Tipo de entrega
+                            </label>
+                            <Select
+                                value={filters.type}
+                                onValueChange={(type) => applyFilters({ type: type as OrderFilters['type'] })}
+                            >
+                                <SelectTrigger id="type-filter">
+                                    <SelectValue placeholder="Todos los tipos" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    <SelectItem value="pickup">{ORDER_TYPE_LABELS.pickup}</SelectItem>
+                                    <SelectItem value="delivery">{ORDER_TYPE_LABELS.delivery}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <label htmlFor="date-filter" className="text-sm font-medium">
+                                Fecha
+                            </label>
+                            <Input
+                                id="date-filter"
+                                type="date"
+                                value={filters.date}
+                                max={today}
+                                disabled={isSearching}
+                                onChange={(e) => applyFilters({ date: e.target.value })}
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -108,7 +156,9 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                         <div>
                             <p className="font-medium">No hay pedidos</p>
                             <p className="text-muted-foreground mt-1 text-sm">
-                                No hay pedidos registrados para esta fecha.
+                                {isSearching
+                                    ? 'No encontramos pedidos con ese número.'
+                                    : 'No hay pedidos registrados para esta fecha.'}
                             </p>
                         </div>
                     </div>
@@ -123,6 +173,7 @@ export default function Index({ orders, filters }: OrdersIndexProps) {
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="min-w-0 space-y-1">
                                         <div className="flex flex-wrap items-center gap-2">
+                                            <p className="font-semibold">#{formatOrderDisplayNumber(order.id)}</p>
                                             <p className="font-semibold">{order.customer_name}</p>
                                             <span
                                                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${orderStatusBadgeClass(order.status)}`}
