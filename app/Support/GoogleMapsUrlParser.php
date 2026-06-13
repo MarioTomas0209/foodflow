@@ -252,20 +252,88 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        $cacheKey = 'google_maps_geocode:v2:'.md5($normalizedQuery.'|'.round($context['bias_lat'], 3).','.round($context['bias_lng'], 3));
+        $cacheKey = 'google_maps_geocode:v3:'.md5($normalizedQuery.'|'.round($context['bias_lat'], 3).','.round($context['bias_lng'], 3));
         $cached = Cache::get($cacheKey);
 
         if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
             return $cached;
         }
 
-        $coords = self::geocodeWithGoogle($query, $context) ?? self::geocodeWithNominatim($query, $context);
+        $coords = self::findPlaceWithGoogle($query, $context)
+            ?? self::geocodeWithGoogle($query, $context)
+            ?? self::geocodeWithNominatim($query, $context);
 
         if ($coords !== null) {
             Cache::put($cacheKey, $coords, now()->addDay());
         }
 
         return $coords;
+    }
+
+    /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function findPlaceWithGoogle(string $query, array $context): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
+        $biasLat = $context['bias_lat'];
+        $biasLng = $context['bias_lng'];
+        $radiusMeters = (int) min(max($context['bias_radius_km'] * 1000, 5000), 50000);
+
+        try {
+            $response = self::httpClient()
+                ->get('https://maps.googleapis.com/maps/api/place/findplacefromtext/json', [
+                    'input' => $query,
+                    'inputtype' => 'textquery',
+                    'fields' => 'geometry,name,formatted_address',
+                    'locationbias' => sprintf('circle:%d@%s,%s', $radiusMeters, $biasLat, $biasLng),
+                    'key' => $apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $candidates = $response->json('candidates');
+
+            if (! is_array($candidates) || $candidates === []) {
+                return null;
+            }
+
+            $coordsList = [];
+
+            foreach ($candidates as $candidate) {
+                $location = $candidate['geometry']['location'] ?? null;
+
+                if (! is_array($location)) {
+                    continue;
+                }
+
+                $coords = self::coordsFromPair(
+                    (float) ($location['lat'] ?? 0),
+                    (float) ($location['lng'] ?? 0),
+                );
+
+                if ($coords !== null) {
+                    $coordsList[] = $coords;
+                }
+            }
+
+            return self::selectBestGeocodeCandidate($coordsList, $context);
+        } catch (\Throwable $exception) {
+            Log::warning('Google Places API failed', [
+                'query' => $query,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -293,6 +361,7 @@ class GoogleMapsUrlParser
                     'key' => $apiKey,
                     'region' => 'mx',
                     'language' => 'es',
+                    'components' => 'country:MX',
                     'bounds' => sprintf(
                         '%s,%s|%s,%s',
                         $biasLat - $latDelta,
