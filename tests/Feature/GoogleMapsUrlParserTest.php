@@ -98,6 +98,21 @@ test('google maps url parser resolves mobile share links without coordinates in 
     expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
 });
 
+test('google maps url parser ignores datacenter-biased coordinates outside Mexico', function () {
+    Http::fake([
+        'maps.app.goo.gl/*' => Http::sequence()
+            ->push('', 302, [
+                'Location' => 'https://www.google.com/maps/place/El+Arenal/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+            ])
+            ->push('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1],null,null,["0x858d3f4b1a2dda23:0x24a52a261c64c5df"],"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0]]</script>', 200),
+        'www.google.com/*' => Http::response('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1],null,null,["0x858d3f4b1a2dda23:0x24a52a261c64c5df"],"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0]]</script>', 200),
+    ]);
+
+    $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/NcUut5SKowPfppfJ8');
+
+    expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
+});
+
 test('google maps share url detection works for goo.gl links', function () {
     expect(GoogleMapsUrlParser::isShareUrl('https://maps.app.goo.gl/QmksuekEcDxhsjfq9'))->toBeTrue();
 });
