@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { CalendarDays, LayoutDashboard, MapPin, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, LogOut, MapPin, Menu, Settings, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { OrderNotificationsBell } from '@/components/dashboard/order-notifications-bell';
@@ -19,6 +19,7 @@ interface NavItem {
     href: string;
     icon: LucideIcon;
     isActive: (url: string) => boolean;
+    method?: 'post';
 }
 
 const navItems: NavItem[] = [
@@ -58,6 +59,13 @@ const navItems: NavItem[] = [
         icon: Settings,
         isActive: (url) => url.startsWith('/dashboard/settings'),
     },
+    {
+        title: 'Cerrar sesión',
+        href: route('logout'),
+        icon: LogOut,
+        isActive: () => false,
+        method: 'post',
+    },
 ];
 
 function OrganizationBrand({ name, logo }: { name: string; logo: string | null | undefined }) {
@@ -86,12 +94,12 @@ function NavLinks({ url, onNavigate }: { url: string; onNavigate?: () => void })
                     <Link
                         key={item.href}
                         href={item.href}
+                        method={item.method}
+                        as={item.method ? 'button' : undefined}
                         onClick={onNavigate}
                         className={cn(
                             'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                            active
-                                ? 'bg-primary/10 text-primary font-medium'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                            active ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
                         )}
                     >
                         <Icon className="size-4 shrink-0" />
@@ -113,12 +121,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const organizationName = currentOrganization?.name ?? 'Mi negocio';
 
     const notificationsBell = (
-        <OrderNotificationsBell
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onMarkAllAsRead={markAllAsRead}
-            onDismiss={dismiss}
-        />
+        <OrderNotificationsBell notifications={notifications} unreadCount={unreadCount} onMarkAllAsRead={markAllAsRead} onDismiss={dismiss} />
     );
 
     return (

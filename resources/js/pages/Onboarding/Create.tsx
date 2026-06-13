@@ -3,10 +3,12 @@ import { LoaderCircle } from 'lucide-react';
 import { FormEventHandler, useRef } from 'react';
 
 import InputError from '@/components/input-error';
+import { FormTextarea } from '@/components/menu/form-textarea';
+import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
+import { AuthFieldLabel, inputClassName } from '@/components/storefront/CustomerAuthShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import AuthLayout from '@/layouts/auth-layout';
+import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
 
 const generateSlug = (value: string) =>
@@ -50,14 +52,18 @@ export default function Create() {
     const slugPreview = data.slug || 'mi-negocio';
 
     return (
-        <AuthLayout title="Crea tu negocio" description="Configura tu organización para empezar a usar FoodFlow">
-            <Head title="Onboarding" />
-            <form className="flex flex-col gap-6" onSubmit={submit}>
-                <div className="grid gap-6">
+        <>
+            <Head title="Crea tu negocio" />
+            <OnboardingShell
+                title="Crea tu negocio"
+                subtitle="Configura tu organización para empezar a publicar tu menú y recibir pedidos."
+            >
+                <form className="space-y-4" onSubmit={submit}>
                     <div className="grid gap-2">
-                        <Label htmlFor="name">Nombre del negocio</Label>
+                        <AuthFieldLabel htmlFor="name">Nombre del negocio</AuthFieldLabel>
                         <Input
                             id="name"
+                            className={inputClassName}
                             type="text"
                             required
                             autoFocus
@@ -70,9 +76,10 @@ export default function Create() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="slug">URL de tu negocio</Label>
+                        <AuthFieldLabel htmlFor="slug">URL de tu negocio</AuthFieldLabel>
                         <Input
                             id="slug"
+                            className={inputClassName}
                             type="text"
                             required
                             value={data.slug}
@@ -80,17 +87,26 @@ export default function Create() {
                             disabled={processing}
                             placeholder="taqueria-el-patron"
                         />
-                        <p className="text-muted-foreground text-sm">
-                            {window.location.host}/{slugPreview}
-                        </p>
+                        <div className="bg-muted/40 rounded-xl border px-3 py-2.5">
+                            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                                Tu menú público
+                            </p>
+                            <p className="mt-0.5 font-mono text-sm break-all">
+                                <span className="text-muted-foreground">{window.location.host}/</span>
+                                <span className="font-medium">{slugPreview}</span>
+                            </p>
+                        </div>
                         <InputError message={errors.slug} />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="phone">Teléfono</Label>
+                        <AuthFieldLabel htmlFor="phone">Teléfono</AuthFieldLabel>
                         <Input
                             id="phone"
-                            type="text"
+                            className={inputClassName}
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
                             value={data.phone}
                             onChange={(e) => setData('phone', e.target.value)}
                             disabled={processing}
@@ -100,27 +116,30 @@ export default function Create() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="description">Descripción</Label>
-                        <textarea
+                        <AuthFieldLabel htmlFor="description">Descripción</AuthFieldLabel>
+                        <FormTextarea
                             id="description"
+                            className={inputClassName}
                             rows={4}
                             value={data.description}
                             onChange={(e) => setData('description', e.target.value)}
                             disabled={processing}
                             placeholder="Cuéntanos sobre tu negocio..."
-                            className={cn(
-                                'flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
-                            )}
                         />
                         <InputError message={errors.description} />
                     </div>
 
-                    <Button type="submit" className="mt-2 w-full" disabled={processing}>
-                        {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    <Button
+                        type="submit"
+                        size="lg"
+                        className={cn('h-12 w-full rounded-full text-base font-semibold', storefrontAccent.button)}
+                        disabled={processing}
+                    >
+                        {processing && <LoaderCircle className="size-4 animate-spin" />}
                         Crear negocio
                     </Button>
-                </div>
-            </form>
-        </AuthLayout>
+                </form>
+            </OnboardingShell>
+        </>
     );
 }
