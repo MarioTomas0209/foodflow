@@ -20,7 +20,7 @@ import { formatHourLabel } from '@/lib/business-hours';
 import { findZoneForCoords, type Zone } from '@/lib/delivery-zones';
 import { formatCurrency } from '@/lib/format-currency';
 import { requestGeolocation } from '@/lib/geolocation';
-import { buildMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl } from '@/lib/maps';
+import { buildMapsUrl, extractGoogleMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl, type ResolvedMapsLink } from '@/lib/maps';
 import { getPreorderWindow, type CartContext } from '@/lib/preorder';
 import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
@@ -203,6 +203,13 @@ interface CheckoutProps {
 export default function Checkout({ organization, zones, customer, addresses, cart_context }: CheckoutProps) {
     const didInit = useRef(false);
     const errorBannerRef = useRef<HTMLDivElement>(null);
+    const mapsResolveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mapsSubmitOverride = useRef<Partial<{
+        latitude: number | null;
+        longitude: number | null;
+        delivery_maps_url: string;
+        zone_id: string;
+    }> | null>(null);
     const [cartItems, setCartItems] = useState<CartItem[] | null>(null);
     const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [locationError, setLocationError] = useState<string | null>(null);
@@ -286,20 +293,24 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
     const applyCoordinates = useCallback(
         (latitude: number | null, longitude: number | null, mapsUrl: string | null = null) => {
+            const zone =
+                latitude !== null && longitude !== null ? findZoneForCoords(zones, latitude, longitude) : null;
+
             setData((current) => ({
                 ...current,
                 latitude,
                 longitude,
                 delivery_maps_url: mapsUrl ?? '',
+                zone_id: zone?.id ?? (latitude !== null && longitude !== null ? '' : current.zone_id),
             }));
             if (mapsUrl) {
                 setMapsLinkInput(mapsUrl);
             }
-            setLocationStatus('success');
+            setLocationStatus(latitude !== null && longitude !== null ? 'success' : mapsUrl ? 'success' : 'idle');
             setLocationError(null);
             setMapsLinkError(null);
         },
-        [setData],
+        [setData, zones],
     );
 
     const clearCoordinates = useCallback(() => {
@@ -336,56 +347,88 @@ export default function Checkout({ organization, zones, customer, addresses, car
         }
     }, [applyCoordinates, setData]);
 
-    const handleMapsLinkBlur = useCallback(async () => {
-        const trimmed = mapsLinkInput.trim();
+    const resolveMapsLinkInput = useCallback(
+        async (rawInput?: string): Promise<ResolvedMapsLink | null> => {
+            const trimmed = extractGoogleMapsUrl((rawInput ?? mapsLinkInput).trim());
 
-        if (!trimmed) {
-            if (data.latitude !== null || data.longitude !== null) {
-                clearCoordinates();
+            if (!trimmed) {
+                if (data.latitude !== null || data.longitude !== null) {
+                    clearCoordinates();
+                }
+
+                setMapsLinkError(null);
+                return null;
             }
 
+            if (trimmed !== mapsLinkInput.trim()) {
+                setMapsLinkInput(trimmed);
+            }
+
+            const localParsed = parseGoogleMapsUrl(trimmed);
+
+            if (localParsed) {
+                const resolved = {
+                    latitude: localParsed.latitude,
+                    longitude: localParsed.longitude,
+                    mapsUrl: trimmed,
+                };
+                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
+                return resolved;
+            }
+
+            if (!isGoogleMapsShareUrl(trimmed)) {
+                setMapsLinkError('Pega un enlace de Google Maps o escribe las coordenadas (lat, lng).');
+                return null;
+            }
+
+            setMapsLinkResolving(true);
             setMapsLinkError(null);
-            return;
-        }
 
-        const localParsed = parseGoogleMapsUrl(trimmed);
+            try {
+                const resolved = await resolveGoogleMapsUrl(
+                    trimmed,
+                    route('storefront.maps.resolve', organization.slug),
+                );
 
-        if (localParsed) {
-            applyCoordinates(localParsed.latitude, localParsed.longitude, trimmed);
-            return;
-        }
+                if (!resolved) {
+                    setMapsLinkError('Pega un enlace válido de Google Maps.');
+                    return null;
+                }
 
-        if (!isGoogleMapsShareUrl(trimmed)) {
-            setMapsLinkError('Pega un enlace de Google Maps o escribe las coordenadas (lat, lng).');
-            return;
-        }
+                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
+                return resolved;
+            } finally {
+                setMapsLinkResolving(false);
+            }
+        },
+        [
+            applyCoordinates,
+            clearCoordinates,
+            data.latitude,
+            data.longitude,
+            mapsLinkInput,
+            organization.slug,
+        ],
+    );
 
-        setMapsLinkResolving(true);
-        setMapsLinkError(null);
+    const scheduleMapsLinkResolve = useCallback(
+        (value: string) => {
+            if (mapsResolveTimer.current) {
+                clearTimeout(mapsResolveTimer.current);
+            }
 
-        try {
-            const resolved = await resolveGoogleMapsUrl(
-                trimmed,
-                route('storefront.maps.resolve', organization.slug),
-            );
+            const trimmed = extractGoogleMapsUrl(value.trim());
 
-            if (!resolved) {
-                setMapsLinkError('Pega un enlace válido de Google Maps.');
+            if (!trimmed || (!parseGoogleMapsUrl(trimmed) && !isGoogleMapsShareUrl(trimmed))) {
                 return;
             }
 
-            applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
-        } finally {
-            setMapsLinkResolving(false);
-        }
-    }, [
-        applyCoordinates,
-        clearCoordinates,
-        data.latitude,
-        data.longitude,
-        mapsLinkInput,
-        organization.slug,
-    ]);
+            mapsResolveTimer.current = setTimeout(() => {
+                void resolveMapsLinkInput(trimmed);
+            }, 350);
+        },
+        [resolveMapsLinkInput],
+    );
 
     useEffect(() => {
         if (didInit.current) {
@@ -422,13 +465,27 @@ export default function Checkout({ organization, zones, customer, addresses, car
     useEffect(() => {
         transform((payload) => ({
             ...payload,
-            delivery_maps_url: payload.delivery_maps_url?.trim() || mapsLinkInput.trim() || null,
-            zone_id: payload.zone_id || null,
+            ...(mapsSubmitOverride.current ?? {}),
+            delivery_maps_url:
+                mapsSubmitOverride.current?.delivery_maps_url ??
+                (payload.delivery_maps_url?.trim() ||
+                    extractGoogleMapsUrl(mapsLinkInput) ||
+                    null),
+            zone_id: mapsSubmitOverride.current?.zone_id ?? (payload.zone_id || null),
             address_id: payload.address_id || null,
             save_address: payload.save_address || false,
             address_label: payload.address_label?.trim() || null,
         }));
     }, [mapsLinkInput, transform]);
+
+    useEffect(
+        () => () => {
+            if (mapsResolveTimer.current) {
+                clearTimeout(mapsResolveTimer.current);
+            }
+        },
+        [],
+    );
 
     useEffect(() => {
         if (Object.keys(errors).length === 0) {
@@ -505,8 +562,29 @@ export default function Checkout({ organization, zones, customer, addresses, car
     const showSavedAddresses = Boolean(customer && addresses.length > 0 && data.type === 'delivery' && !useCustomAddress);
     const showDeliveryForm = data.type === 'delivery' && (!customer || addresses.length === 0 || useCustomAddress);
 
-    const submit: FormEventHandler = (e) => {
+    const submit: FormEventHandler = async (e) => {
         e.preventDefault();
+
+        mapsSubmitOverride.current = null;
+
+        if (mapsLinkInput.trim() && (data.latitude === null || data.longitude === null)) {
+            const resolved = await resolveMapsLinkInput(mapsLinkInput);
+
+            if (resolved && resolved.latitude !== null && resolved.longitude !== null) {
+                const zone = findZoneForCoords(zones, resolved.latitude, resolved.longitude);
+
+                mapsSubmitOverride.current = {
+                    latitude: resolved.latitude,
+                    longitude: resolved.longitude,
+                    delivery_maps_url: resolved.mapsUrl,
+                    zone_id: zone?.id ?? data.zone_id,
+                };
+            } else if (resolved?.mapsUrl) {
+                mapsSubmitOverride.current = {
+                    delivery_maps_url: resolved.mapsUrl,
+                };
+            }
+        }
 
         post(route('storefront.orders.store', organization.slug), {
             onSuccess: () => clearCartStorage(),
@@ -518,6 +596,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
     const canSubmit =
         !processing &&
+        !mapsLinkResolving &&
         (data.type !== 'delivery' ||
             (matchedZone !== null && (data.delivery_address !== '' || data.address_id !== ''))) &&
         (!data.is_preorder || Boolean(data.scheduled_for));
@@ -814,14 +893,28 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                         id="maps-link"
                                         type="text"
                                         inputMode="url"
+                                        autoComplete="off"
                                         className={inputClassName}
                                         value={mapsLinkInput}
                                         onChange={(e) => {
-                                            setMapsLinkInput(e.target.value);
+                                            const value = e.target.value;
+                                            setMapsLinkInput(value);
                                             setMapsLinkError(null);
+                                            scheduleMapsLinkResolve(value);
+                                        }}
+                                        onPaste={(e) => {
+                                            const pasted = e.clipboardData.getData('text');
+
+                                            if (mapsResolveTimer.current) {
+                                                clearTimeout(mapsResolveTimer.current);
+                                            }
+
+                                            window.setTimeout(() => {
+                                                void resolveMapsLinkInput(pasted);
+                                            }, 0);
                                         }}
                                         onBlur={() => {
-                                            void handleMapsLinkBlur();
+                                            void resolveMapsLinkInput();
                                         }}
                                         disabled={processing || mapsLinkResolving}
                                         placeholder="https://maps.app.goo.gl/... o 16.2520, -92.1350"
@@ -1004,6 +1097,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                 id="customer-notes"
                                 rows={3}
                                 className={inputClassName}
+                                maxLength={5000}
                                 value={data.customer_notes}
                                 onChange={(e) => setData('customer_notes', e.target.value)}
                                 disabled={processing}

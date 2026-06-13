@@ -141,7 +141,7 @@ class OrderController extends Controller
             'organization_id' => ['required', Rule::exists('organizations', 'id')],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_phone' => ['required', 'string', 'max:20'],
-            'customer_notes' => ['nullable', 'string'],
+            'customer_notes' => ['nullable', 'string', 'max:5000'],
             'type' => ['required', Rule::in(['pickup', 'delivery'])],
             'delivery_address' => ['required_if:type,delivery', 'nullable', 'string', 'max:255'],
             'delivery_city' => [

@@ -45,11 +45,49 @@ export function getOrderDeliveryMapsUrl(order: {
     return pastedUrl || null;
 }
 
-export function parseGoogleMapsUrl(input: string): ParsedCoords | null {
+export function extractGoogleMapsUrl(input: string): string {
     const trimmed = input.trim();
 
     if (!trimmed) {
+        return '';
+    }
+
+    if (/^geo:/i.test(trimmed)) {
+        return trimmed;
+    }
+
+    const urlMatch = trimmed.match(/https?:\/\/[^\s<>"']+/i);
+
+    if (urlMatch) {
+        return urlMatch[0].replace(/[),.;!?]+$/g, '');
+    }
+
+    const bareMatch = trimmed.match(/((?:maps\.app\.goo\.gl|goo\.gl)\/[^\s<>"']+)/i);
+
+    if (bareMatch) {
+        return `https://${bareMatch[1].replace(/[),.;!?]+$/g, '')}`;
+    }
+
+    const googleMapsMatch = trimmed.match(/((?:www\.)?google\.com\/maps[^\s<>"']*)/i);
+
+    if (googleMapsMatch) {
+        return `https://${googleMapsMatch[1].replace(/[),.;!?]+$/g, '')}`;
+    }
+
+    return trimmed;
+}
+
+export function parseGoogleMapsUrl(input: string): ParsedCoords | null {
+    const trimmed = extractGoogleMapsUrl(input);
+
+    if (!trimmed) {
         return null;
+    }
+
+    const geoMatch = trimmed.match(/^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);
+
+    if (geoMatch) {
+        return coordsFromPair(Number(geoMatch[1]), Number(geoMatch[2]));
     }
 
     const directMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
@@ -109,10 +147,14 @@ export function parseGoogleMapsUrl(input: string): ParsedCoords | null {
 }
 
 export function isGoogleMapsShareUrl(input: string): boolean {
-    const trimmed = input.trim();
+    const trimmed = extractGoogleMapsUrl(input);
 
     if (!trimmed) {
         return false;
+    }
+
+    if (/^geo:/i.test(trimmed)) {
+        return true;
     }
 
     if (/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.test(trimmed)) {
@@ -135,7 +177,7 @@ export function isGoogleMapsShareUrl(input: string): boolean {
 }
 
 export async function resolveGoogleMapsUrl(input: string, endpoint: string): Promise<ResolvedMapsLink | null> {
-    const trimmed = input.trim();
+    const trimmed = extractGoogleMapsUrl(input);
 
     if (!trimmed) {
         return null;

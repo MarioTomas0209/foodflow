@@ -102,6 +102,57 @@ test('authenticated customers can place an order with server side pricing', func
     expect($product->fresh()->stock)->toBe(8);
 });
 
+test('orders accept long customer notes', function () {
+    $user = User::factory()->create();
+
+    $organization = Organization::create([
+        'owner_id' => $user->id,
+        'name' => 'Notas largas',
+        'slug' => 'notas-largas',
+        'status' => 'active',
+    ]);
+
+    $category = Category::create([
+        'organization_id' => $organization->id,
+        'name' => 'Tacos',
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $product = Product::create([
+        'organization_id' => $organization->id,
+        'category_id' => $category->id,
+        'name' => 'Taco',
+        'price' => 25,
+        'has_variants' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $longNotes = str_repeat('Nota larga. ', 300);
+    $longNotes = rtrim($longNotes);
+
+    expect(strlen($longNotes))->toBeGreaterThan(255);
+
+    $this->asCustomer()->post(route('storefront.orders.store', $organization->slug), [
+        'organization_id' => $organization->id,
+        'customer_name' => 'Cliente',
+        'customer_phone' => '5512345678',
+        'customer_notes' => $longNotes,
+        'type' => 'pickup',
+        'payment_method' => 'cash',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertRedirect();
+
+    expect(Order::query()->first()?->customer_notes)->toBe($longNotes);
+});
+
 test('authenticated customers see order confirmation page after placing order', function () {
     $user = User::factory()->create();
 
