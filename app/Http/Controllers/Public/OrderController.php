@@ -6,7 +6,6 @@ use App\Events\NewOrderReceived;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerAddress;
 use App\Models\DailyMenuItem;
-use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Product;
@@ -201,7 +200,12 @@ class OrderController extends Controller
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'zone_id' => ['nullable', 'exists:delivery_zones,id'],
-            'delivery_maps_url' => ['nullable', 'string', 'max:2048'],
+            'delivery_maps_url' => [
+                Rule::requiredIf($request->input('type') === 'delivery'),
+                'nullable',
+                'string',
+                'max:2048',
+            ],
             'address_id' => array_merge(
                 ['nullable'],
                 $customer
@@ -366,42 +370,43 @@ class OrderController extends Controller
             $zone = null;
             $latitude = $validated['latitude'] ?? null;
             $longitude = $validated['longitude'] ?? null;
+            $mapsUrl = trim($validated['delivery_maps_url'] ?? '');
 
-            if (($latitude === null || $longitude === null) && ! empty($validated['delivery_maps_url'])) {
+            if ($mapsUrl === '') {
+                throw ValidationException::withMessages([
+                    'delivery_maps_url' => 'Agrega el enlace de Google Maps de tu ubicación.',
+                ]);
+            }
+
+            if ($latitude === null || $longitude === null) {
                 $deliveryZones = $organization->deliveryZones()
                     ->where('is_active', true)
                     ->get(['center_lat', 'center_lng', 'radius_km']);
 
                 $parsedCoords = GoogleMapsUrlParser::parse(
-                    $validated['delivery_maps_url'],
+                    $mapsUrl,
                     $this->buildGeocodeContext($deliveryZones),
                 );
 
                 if ($parsedCoords !== null) {
                     $latitude = $parsedCoords['latitude'];
                     $longitude = $parsedCoords['longitude'];
+                    $validated['latitude'] = $latitude;
+                    $validated['longitude'] = $longitude;
                 }
             }
 
-            if ($latitude !== null && $longitude !== null) {
-                $zone = $organization->findDeliveryZoneFor($latitude, $longitude);
-
-                if ($zone === null) {
-                    throw ValidationException::withMessages([
-                        'delivery_address' => 'Tu ubicación está fuera de nuestras zonas de entrega.',
-                    ]);
-                }
-            } elseif (! empty($validated['zone_id'])) {
-                $zone = DeliveryZone::query()
-                    ->where('id', $validated['zone_id'])
-                    ->where('organization_id', $organization->id)
-                    ->where('is_active', true)
-                    ->first();
+            if ($latitude === null || $longitude === null) {
+                throw ValidationException::withMessages([
+                    'delivery_maps_url' => 'No pudimos leer las coordenadas del enlace. Verifica que sea un enlace válido de Google Maps.',
+                ]);
             }
+
+            $zone = $organization->findDeliveryZoneFor($latitude, $longitude);
 
             if ($zone === null) {
                 throw ValidationException::withMessages([
-                    'delivery_address' => 'Selecciona una zona de entrega válida.',
+                    'delivery_address' => 'Tu ubicación está fuera de nuestras zonas de entrega.',
                 ]);
             }
 

@@ -13,6 +13,11 @@ use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 
+function deliveryMapsUrl(float $lat = 16.2520, float $lng = -92.1350): string
+{
+    return sprintf('https://www.google.com/maps?q=%s,%s', $lat, $lng);
+}
+
 test('guests are redirected to login when visiting checkout', function () {
     $user = User::factory()->create();
 
@@ -201,6 +206,7 @@ test('authenticated customers see order confirmation page after placing order', 
         'delivery_city' => 'Comitán de Domínguez, Chiapas',
         'latitude' => 16.2520,
         'longitude' => -92.1350,
+        'delivery_maps_url' => deliveryMapsUrl(),
         'payment_method' => 'transfer',
         'items' => [
             [
@@ -320,10 +326,10 @@ test('delivery orders require a valid delivery zone', function () {
                 'quantity' => 1,
             ],
         ],
-    ])->assertSessionHasErrors('delivery_address');
+    ])->assertSessionHasErrors('delivery_maps_url');
 });
 
-test('delivery orders accept manual zone selection without coordinates', function () {
+test('delivery orders reject manual zone selection without google maps link', function () {
     $user = User::factory()->create();
 
     $organization = Organization::create([
@@ -377,16 +383,9 @@ test('delivery orders accept manual zone selection without coordinates', functio
                 'quantity' => 1,
             ],
         ],
-    ])->assertRedirect();
+    ])->assertSessionHasErrors('delivery_maps_url');
 
-    $this->assertDatabaseHas('orders', [
-        'customer_name' => 'Carlos',
-        'delivery_zone_id' => $zone->id,
-        'delivery_fee' => '20.00',
-        'total' => '45.00',
-        'latitude' => null,
-        'longitude' => null,
-    ]);
+    expect(Order::query()->count())->toBe(0);
 });
 
 test('delivery orders store the pasted google maps share link', function () {
@@ -515,6 +514,7 @@ test('delivery orders prefer coordinates over manual zone when both are provided
         'delivery_city' => 'Comitán de Domínguez, Chiapas',
         'latitude' => 16.2520,
         'longitude' => -92.1350,
+        'delivery_maps_url' => deliveryMapsUrl(),
         'zone_id' => $otherZone->id,
         'payment_method' => 'cash',
         'items' => [
@@ -580,6 +580,7 @@ test('delivery orders reject addresses outside coverage zones', function () {
         'delivery_city' => 'Comitán de Domínguez, Chiapas',
         'latitude' => 19.4326,
         'longitude' => -99.1332,
+        'delivery_maps_url' => deliveryMapsUrl(19.4326, -99.1332),
         'payment_method' => 'cash',
         'items' => [
             [
@@ -640,6 +641,7 @@ test('delivery orders reject manual zone when coordinates are outside coverage',
         'delivery_city' => 'Comitán de Domínguez, Chiapas',
         'latitude' => 19.4326,
         'longitude' => -99.1332,
+        'delivery_maps_url' => deliveryMapsUrl(19.4326, -99.1332),
         'zone_id' => $zone->id,
         'payment_method' => 'cash',
         'items' => [
@@ -794,6 +796,7 @@ test('authenticated customers get customer_id on orders and can save new address
             'delivery_city' => 'Comitán de Domínguez, Chiapas',
             'latitude' => 16.2520,
             'longitude' => -92.1350,
+            'delivery_maps_url' => deliveryMapsUrl(),
             'save_address' => true,
             'address_label' => 'Trabajo',
             'payment_method' => 'cash',
@@ -870,6 +873,7 @@ test('orders with saved address_id do not create duplicate addresses', function 
         'city' => 'Comitán de Domínguez, Chiapas',
         'latitude' => 16.2520,
         'longitude' => -92.1350,
+        'maps_url' => deliveryMapsUrl(),
         'is_default' => true,
     ]);
 
@@ -884,6 +888,7 @@ test('orders with saved address_id do not create duplicate addresses', function 
             'delivery_city' => 'Comitán de Domínguez, Chiapas',
             'latitude' => 16.2520,
             'longitude' => -92.1350,
+            'delivery_maps_url' => deliveryMapsUrl(),
             'save_address' => true,
             'payment_method' => 'cash',
             'items' => [

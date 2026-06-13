@@ -7,20 +7,12 @@ import { FormTextarea } from '@/components/menu/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { clearCartStorage, loadCartFromStorage } from '@/lib/cart-storage';
 import { formatHourLabel } from '@/lib/business-hours';
 import { findZoneForCoords, type Zone } from '@/lib/delivery-zones';
 import { formatCurrency } from '@/lib/format-currency';
-import { requestGeolocation } from '@/lib/geolocation';
-import { buildMapsUrl, extractGoogleMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl, type ResolvedMapsLink } from '@/lib/maps';
+import { extractGoogleMapsUrl, isGoogleMapsShareUrl, parseGoogleMapsUrl, resolveGoogleMapsUrl, type ResolvedMapsLink } from '@/lib/maps';
 import { getPreorderWindow, type CartContext } from '@/lib/preorder';
 import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
@@ -54,10 +46,19 @@ function CheckoutCard({
     );
 }
 
-function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
+function FieldLabel({
+    htmlFor,
+    children,
+    required,
+}: {
+    htmlFor?: string;
+    children: React.ReactNode;
+    required?: boolean;
+}) {
     return (
         <Label htmlFor={htmlFor} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
             {children}
+            {required && <span className="text-destructive ml-0.5">*</span>}
         </Label>
     );
 }
@@ -94,80 +95,30 @@ function zoneLabel(zone: Zone): string {
     return `${zone.name} — ${formatCurrency(zone.fee)}`;
 }
 
-function ZoneSelectField({
-    id,
-    zones,
-    value,
-    onChange,
-    disabled,
-    detectedZone,
-    lockZone,
-}: {
-    id: string;
-    zones: Zone[];
-    value: string;
-    onChange: (zoneId: string) => void;
-    disabled?: boolean;
-    detectedZone?: Zone | null;
-    lockZone?: boolean;
-}) {
-    const selectedZone =
-        lockZone && detectedZone ? detectedZone : (zones.find((zone) => zone.id === value) ?? null);
-
-    if (lockZone && detectedZone) {
-        return (
-            <div
-                id={id}
-                className={cn(
-                    'rounded-xl border p-3',
-                    storefrontAccent.cardActive,
-                    'bg-orange-50/60 dark:bg-orange-950/25',
-                )}
-            >
-                <p className="text-sm font-semibold">{zoneLabel(detectedZone)}</p>
-                {detectedZone.description && (
-                    <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{detectedZone.description}</p>
-                )}
-            </div>
-        );
-    }
-
+function DetectedZoneDisplay({ id, zone }: { id: string; zone: Zone }) {
     return (
-        <>
-            <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
-                <SelectTrigger id={id} className={inputClassName}>
-                    <SelectValue placeholder="Selecciona tu zona" />
-                </SelectTrigger>
-                <SelectContent>
-                    {zones.map((zone) => (
-                        <SelectItem key={zone.id} value={zone.id}>
-                            {zoneLabel(zone)}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-            {selectedZone && (
-                <div
-                    className={cn(
-                        'rounded-xl border p-3',
-                        storefrontAccent.cardActive,
-                        'bg-orange-50/60 dark:bg-orange-950/25',
-                    )}
-                >
-                    <p className="text-sm font-semibold">{zoneLabel(selectedZone)}</p>
-                    {selectedZone.description && (
-                        <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{selectedZone.description}</p>
-                    )}
-                </div>
+        <div
+            id={id}
+            className={cn(
+                'rounded-xl border p-3',
+                storefrontAccent.cardActive,
+                'bg-orange-50/60 dark:bg-orange-950/25',
             )}
-        </>
+        >
+            <p className="text-sm font-semibold">{zoneLabel(zone)}</p>
+            {zone.description && (
+                <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{zone.description}</p>
+            )}
+        </div>
     );
 }
 
 function DeliveryZoneMessages({
+    hasMapsLink,
     hasCoords,
     detectedZone,
 }: {
+    hasMapsLink: boolean;
     hasCoords: boolean;
     detectedZone: Zone | null;
 }) {
@@ -182,13 +133,23 @@ function DeliveryZoneMessages({
     if (hasCoords && !detectedZone) {
         return (
             <p className="text-amber-700 text-sm dark:text-amber-400">
-                Tu ubicación no coincide con ninguna zona automática. Selecciona tu zona manualmente.
+                Tu ubicación está fuera de nuestras zonas de entrega.
+            </p>
+        );
+    }
+
+    if (hasMapsLink && !hasCoords) {
+        return (
+            <p className="text-amber-700 text-sm dark:text-amber-400">
+                No pudimos leer las coordenadas del enlace. Verifica que sea un enlace válido de Google Maps.
             </p>
         );
     }
 
     return (
-        <p className="text-muted-foreground text-sm">Selecciona la zona donde recibirás tu pedido.</p>
+        <p className="text-muted-foreground text-sm">
+            Pega el enlace de Google Maps de tu ubicación para calcular la zona y el costo de envío.
+        </p>
     );
 }
 
@@ -246,8 +207,11 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
     const selectSavedAddress = useCallback(
         (address: CustomerAddress) => {
-            const lat = address.latitude !== null ? Number(address.latitude) : null;
-            const lng = address.longitude !== null ? Number(address.longitude) : null;
+            const hasMapsUrl = Boolean(address.maps_url?.trim());
+            const lat =
+                hasMapsUrl && address.latitude !== null ? Number(address.latitude) : null;
+            const lng =
+                hasMapsUrl && address.longitude !== null ? Number(address.longitude) : null;
             const zone = lat !== null && lng !== null ? findZoneForCoords(zones, lat, lng) : null;
 
             setData((current) => ({
@@ -263,7 +227,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                 address_label: '',
             }));
             setMapsLinkInput(address.maps_url ?? '');
-            setLocationStatus(lat !== null && lng !== null || address.maps_url ? 'success' : 'idle');
+            setLocationStatus(lat !== null && lng !== null ? 'success' : 'idle');
             setLocationError(null);
             setMapsLinkError(null);
             setUseCustomAddress(false);
@@ -330,27 +294,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
         setMapsLinkError(null);
     }, [setData]);
 
-    const captureLocation = useCallback(async () => {
-        setLocationStatus('loading');
-        setLocationError(null);
-        setMapsLinkError(null);
-
-        try {
-            const coords = await requestGeolocation();
-            applyCoordinates(coords.latitude, coords.longitude, null);
-        } catch (error) {
-            setLocationStatus('error');
-            setLocationError(error instanceof Error ? error.message : 'No pudimos obtener tu ubicación.');
-            setData((current) => ({
-                ...current,
-                latitude: null,
-                longitude: null,
-                delivery_maps_url: '',
-            }));
-            setMapsLinkInput('');
-        }
-    }, [applyCoordinates, setData]);
-
     const resolveMapsLinkInput = useCallback(
         async (rawInput?: string): Promise<ResolvedMapsLink | null> => {
             const trimmed = extractGoogleMapsUrl((rawInput ?? mapsLinkInput).trim());
@@ -381,7 +324,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
             }
 
             if (!isGoogleMapsShareUrl(trimmed)) {
-                setMapsLinkError('Pega un enlace de Google Maps o escribe las coordenadas (lat, lng).');
+                setMapsLinkError('Pega un enlace válido de Google Maps.');
                 return null;
             }
 
@@ -547,6 +490,22 @@ export default function Checkout({ organization, zones, customer, addresses, car
         return findZoneForCoords(zones, data.latitude!, data.longitude!);
     }, [hasLocatedCoords, data.latitude, data.longitude, zones]);
 
+    const hasMapsLink = mapsLinkInput.trim() !== '' || data.delivery_maps_url.trim() !== '';
+
+    useEffect(() => {
+        if (data.type !== 'delivery' || hasLocatedCoords || mapsLinkResolving) {
+            return;
+        }
+
+        const trimmed = extractGoogleMapsUrl(mapsLinkInput.trim());
+
+        if (!trimmed || (!parseGoogleMapsUrl(trimmed) && !isGoogleMapsShareUrl(trimmed))) {
+            return;
+        }
+
+        void resolveMapsLinkInput(trimmed);
+    }, [data.type, data.address_id, hasLocatedCoords, mapsLinkInput, mapsLinkResolving, resolveMapsLinkInput]);
+
     const matchedZone = useMemo(() => {
         if (data.type !== 'delivery') {
             return null;
@@ -562,8 +521,6 @@ export default function Checkout({ organization, zones, customer, addresses, car
 
         return null;
     }, [data.type, data.zone_id, gpsZone, hasLocatedCoords, zones]);
-
-    const lockDeliveryZone = hasLocatedCoords && gpsZone !== null;
 
     const deliveryFee = data.type === 'delivery' && matchedZone ? Number(matchedZone.fee) : 0;
     const orderTotal = subtotal + deliveryFee;
@@ -607,7 +564,10 @@ export default function Checkout({ organization, zones, customer, addresses, car
         !processing &&
         !mapsLinkResolving &&
         (data.type !== 'delivery' ||
-            (matchedZone !== null && (data.delivery_address !== '' || data.address_id !== ''))) &&
+            (hasMapsLink &&
+                hasLocatedCoords &&
+                matchedZone !== null &&
+                (data.delivery_address !== '' || data.address_id !== ''))) &&
         (!data.is_preorder || Boolean(data.scheduled_for));
 
     if (!cartItems) {
@@ -806,98 +766,47 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                 <InputError message={errors.delivery_city} />
                             </div>
 
-                            {zones.length > 0 && (
-                                <div className="grid gap-2">
-                                    <FieldLabel htmlFor="delivery-zone">Zona de entrega</FieldLabel>
-                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
-                                    <ZoneSelectField
-                                        id="delivery-zone"
-                                        zones={zones}
-                                        value={data.zone_id}
-                                        detectedZone={gpsZone}
-                                        lockZone={lockDeliveryZone}
-                                        disabled={processing}
-                                        onChange={(zoneId) => {
-                                            setData((current) => ({
-                                                ...current,
-                                                zone_id: zoneId,
-                                            }));
-                                        }}
-                                    />
-                                    <InputError message={errors.delivery_address} />
-                                    <InputError message={errors.zone_id} />
+                            {customer && !data.address_id && (
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={data.save_address}
+                                            onChange={(e) => setData('save_address', e.target.checked)}
+                                            disabled={processing}
+                                        />
+                                        Guardar esta dirección
+                                    </label>
+                                    {data.save_address && (
+                                        <Input
+                                            className={inputClassName}
+                                            placeholder="Ej: Casa, Trabajo (opcional)"
+                                            value={data.address_label}
+                                            onChange={(e) => setData('address_label', e.target.value)}
+                                            disabled={processing}
+                                        />
+                                    )}
                                 </div>
+                            )}
+                                </>
                             )}
 
                             <div className="bg-muted/40 space-y-3 rounded-2xl border p-4">
                                 <div className="flex items-start gap-3">
                                     <MapPin className={cn('mt-0.5 size-5 shrink-0', storefrontAccent.text)} />
                                     <div className="space-y-1 text-sm">
-                                        <p className="font-semibold">Ubicación exacta (opcional)</p>
+                                        <p className="font-semibold">Enlace de Google Maps</p>
                                         <p className="text-muted-foreground">
-                                            Pega un enlace de Google Maps para
-                                            ayudar al repartidor a llegar con precisión.
+                                            Comparte el enlace de tu ubicación en Google Maps. Con él calculamos la
+                                            zona y el costo de envío.
                                         </p>
                                     </div>
                                 </div>
 
-                                {locationStatus === 'loading' && (
-                                    <p className="text-muted-foreground flex items-center gap-2 text-sm">
-                                        <LoaderCircle className="size-4 animate-spin" />
-                                        Obteniendo tu ubicación…
-                                    </p>
-                                )}
-
-                                {locationStatus === 'success' &&
-                                    (data.delivery_maps_url ||
-                                        (data.latitude !== null && data.longitude !== null)) && (
-                                    <div className="space-y-4 text-sm">
-                                        <p className="text-green-700 dark:text-green-400">
-                                            {data.delivery_maps_url
-                                                ? 'Enlace de ubicación guardado.'
-                                                : 'Ubicación capturada verifica que esté correcta tu dirección.'}
-                                        </p>
-                                        {(data.delivery_maps_url ||
-                                            (data.latitude !== null && data.longitude !== null)) && (
-                                            <p>
-                                                <a
-                                                    href={
-                                                        data.delivery_maps_url ||
-                                                        buildMapsUrl(data.latitude!, data.longitude!)
-                                                    }
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className={cn(
-                                                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
-                                                        storefrontAccent.pillMuted,
-                                                    )}
-                                                >
-                                                    <MapPin className="size-3.5" />
-                                                    Ver ubicación en Google Maps
-                                                </a>
-                                            </p>
-                                        )}
-                                        {data.latitude !== null && data.longitude !== null && (
-                                            <div className="text-muted-foreground tabular-nums">
-                                                <p>
-                                                    {Number(data.latitude).toFixed(6)},{' '}
-                                                    {Number(data.longitude).toFixed(6)}
-                                                </p>
-                                            </div>
-                                        )}
-                                   
-                                        {data.delivery_maps_url &&
-                                            data.latitude === null &&
-                                            data.longitude === null && (
-                                                <p className="text-muted-foreground">
-                                                    Selecciona tu zona de entrega arriba para calcular el envío.
-                                                </p>
-                                            )}
-                                    </div>
-                                )}
-
                                 <div className="grid gap-2">
-                                    <FieldLabel htmlFor="maps-link">Enlace de Google Maps</FieldLabel>
+                                    <FieldLabel htmlFor="maps-link" required>
+                                        Enlace de Google Maps
+                                    </FieldLabel>
                                     <Input
                                         id="maps-link"
                                         type="text"
@@ -926,7 +835,8 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                             void resolveMapsLinkInput();
                                         }}
                                         disabled={processing || mapsLinkResolving}
-                                        placeholder="https://maps.app.goo.gl/... o 16.2520, -92.1350"
+                                        required
+                                        placeholder="https://maps.app.goo.gl/..."
                                     />
                                     {mapsLinkResolving && (
                                         <p className="text-muted-foreground flex items-center gap-2 text-sm">
@@ -938,84 +848,44 @@ export default function Checkout({ organization, zones, customer, addresses, car
                                     <InputError message={errors.delivery_maps_url} />
                                 </div>
 
-                                {(locationStatus === 'error' || locationError) && (
-                                    <p className="text-muted-foreground text-sm">
-                                        {locationError ?? 'No pudimos obtener tu ubicación. Puedes seleccionar tu zona arriba.'}
-                                    </p>
+                                {hasLocatedCoords && data.delivery_maps_url && (
+                                    <div className="space-y-3 text-sm">
+                                        <p className="text-green-700 dark:text-green-400">Ubicación leída del enlace.</p>
+                                        <p>
+                                            <a
+                                                href={data.delivery_maps_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={cn(
+                                                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
+                                                    storefrontAccent.pillMuted,
+                                                )}
+                                            >
+                                                <MapPin className="size-3.5" />
+                                                Ver ubicación en Google Maps
+                                            </a>
+                                        </p>
+                                        <div className="text-muted-foreground tabular-nums">
+                                            <p>
+                                                {Number(data.latitude).toFixed(6)}, {Number(data.longitude).toFixed(6)}
+                                            </p>
+                                        </div>
+                                    </div>
                                 )}
 
                                 <InputError message={errors.latitude} />
                                 <InputError message={errors.longitude} />
-
-                                {/* {locationStatus !== 'loading' && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            setLocationStatus('idle');
-                                            void captureLocation();
-                                        }}
-                                        disabled={processing}
-                                    >
-                                        {locationStatus === 'success' || locationStatus === 'error' ? (
-                                            <>
-                                                <RefreshCw className="size-4" />
-                                                Actualizar ubicación
-                                            </>
-                                        ) : (
-                                            <>
-                                                <MapPin className="size-4" />
-                                                Usar mi ubicación
-                                            </>
-                                        )}
-                                    </Button>
-                                )} */}
                             </div>
 
-                            {customer && !data.address_id && (
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="checkbox"
-                                            checked={data.save_address}
-                                            onChange={(e) => setData('save_address', e.target.checked)}
-                                            disabled={processing}
-                                        />
-                                        Guardar esta dirección
-                                    </label>
-                                    {data.save_address && (
-                                        <Input
-                                            className={inputClassName}
-                                            placeholder="Ej: Casa, Trabajo (opcional)"
-                                            value={data.address_label}
-                                            onChange={(e) => setData('address_label', e.target.value)}
-                                            disabled={processing}
-                                        />
-                                    )}
-                                </div>
-                            )}
-                                </>
-                            )}
-
-                            {showSavedAddresses && data.address_id && zones.length > 0 && (
+                            {zones.length > 0 && (
                                 <div className="grid gap-2">
-                                    <FieldLabel htmlFor="delivery-zone-saved">Zona de entrega</FieldLabel>
-                                    <DeliveryZoneMessages hasCoords={hasLocatedCoords} detectedZone={gpsZone} />
-                                    <ZoneSelectField
-                                        id="delivery-zone-saved"
-                                        zones={zones}
-                                        value={data.zone_id}
+                                    <FieldLabel htmlFor="delivery-zone">Zona de entrega</FieldLabel>
+                                    <DeliveryZoneMessages
+                                        hasMapsLink={hasMapsLink}
+                                        hasCoords={hasLocatedCoords}
                                         detectedZone={gpsZone}
-                                        lockZone={lockDeliveryZone}
-                                        disabled={processing}
-                                        onChange={(zoneId) => {
-                                            setData((current) => ({
-                                                ...current,
-                                                zone_id: zoneId,
-                                            }));
-                                        }}
                                     />
+                                    {gpsZone && <DetectedZoneDisplay id="delivery-zone" zone={gpsZone} />}
                                     <InputError message={errors.delivery_address} />
                                     <InputError message={errors.zone_id} />
                                 </div>
