@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
+use App\Support\StorefrontPwaAssetGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -58,6 +59,8 @@ class OrganizationController extends Controller
                 "logos/{$organization->id}",
                 'public',
             );
+
+            app(StorefrontPwaAssetGenerator::class)->clearCache($organization);
         }
 
         $organization->update($payload);

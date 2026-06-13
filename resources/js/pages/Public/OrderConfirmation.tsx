@@ -13,6 +13,7 @@ import {
     ORDER_TYPE_LABELS,
     PAYMENT_METHOD_LABELS,
 } from '@/lib/order-status';
+import { scrollDocumentToTop } from '@/lib/scroll';
 import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
 import { buildWhatsAppUrl } from '@/lib/whatsapp';
@@ -52,7 +53,7 @@ export default function OrderConfirmation({ order, organization }: OrderConfirma
     const deliveryLabel = order.type === 'delivery' ? 'Domicilio' : ORDER_TYPE_LABELS[order.type];
 
     useEffect(() => {
-        window.scrollTo(0, 0);
+        scrollDocumentToTop();
     }, []);
 
     return (
@@ -219,7 +220,12 @@ export default function OrderConfirmation({ order, organization }: OrderConfirma
                         size="lg"
                         className="h-12 w-full rounded-full text-base font-semibold"
                     >
-                        <Link href={namedRoute('storefront.show', organization.slug)}>Volver al menú</Link>
+                        <Link
+                            href={namedRoute('storefront.show', organization.slug)}
+                            onFinish={scrollDocumentToTop}
+                        >
+                            Volver al menú
+                        </Link>
                     </Button>
                 </div>
             </div>

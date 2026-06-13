@@ -1,5 +1,5 @@
 import { Link, router } from '@inertiajs/react';
-import { Home, LogIn, LogOut, Menu, Moon, Package, Sun, UserPlus } from 'lucide-react';
+import { Home, LogIn, LogOut, Menu, Moon, Package, Smartphone, Sun, UserPlus } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 import { useAppearance } from '@/hooks/use-appearance';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { scrollDocumentToTop } from '@/lib/scroll';
 import { useNamedRoute } from '@/lib/ziggy';
 import { cn } from '@/lib/utils';
 import { storefrontAccent } from '@/lib/storefront-theme';
@@ -34,6 +36,7 @@ function menuLinkClassName(highlight = false) {
 export function PublicHeaderMenu({ organization, customerName }: PublicHeaderMenuProps) {
     const namedRoute = useNamedRoute();
     const { appearance, updateAppearance } = useAppearance();
+    const { canInstall, install } = usePwaInstall();
 
     const isDark = useMemo(() => {
         if (appearance === 'dark') {
@@ -94,11 +97,23 @@ export function PublicHeaderMenu({ organization, customerName }: PublicHeaderMen
                             <Link
                                 href={namedRoute('storefront.show', organization.slug)}
                                 className={menuLinkClassName()}
+                                onFinish={scrollDocumentToTop}
                             >
                                 <Home className="size-4" />
                                 Inicio
                             </Link>
                         </SheetClose>
+
+                        {canInstall && (
+                            <button
+                                type="button"
+                                onClick={() => void install()}
+                                className={menuLinkClassName(true)}
+                            >
+                                <Smartphone className="size-4" />
+                                Instalar app
+                            </button>
+                        )}
 
                         {customerName ? (
                             <>

@@ -1,6 +1,9 @@
 import { Link, usePage } from '@inertiajs/react';
 
 import { PublicHeaderMenu } from '@/components/storefront/PublicHeaderMenu';
+import { StorefrontPwaHead } from '@/components/storefront/StorefrontPwaHead';
+import { StorefrontSplashScreen } from '@/components/storefront/StorefrontSplashScreen';
+import { scrollDocumentToTop } from '@/lib/scroll';
 import { useNamedRoute } from '@/lib/ziggy';
 import { cn } from '@/lib/utils';
 import { storefrontAccent } from '@/lib/storefront-theme';
@@ -30,6 +33,9 @@ export default function PublicLayout({ organization, children, subheader, classN
 
     return (
         <div className="bg-background flex min-h-screen flex-col">
+            <StorefrontPwaHead organization={organization} />
+            <StorefrontSplashScreen organization={organization} />
+
             <header
                 id="public-storefront-header"
                 className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 border-b backdrop-blur"
@@ -39,6 +45,7 @@ export default function PublicLayout({ organization, children, subheader, classN
                         <Link
                             href={namedRoute('storefront.show', organization.slug)}
                             className="flex min-w-0 flex-1 items-center gap-3"
+                            onFinish={scrollDocumentToTop}
                         >
                             {organization.logo ? (
                                 <div className="bg-muted/50 flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full border p-1">

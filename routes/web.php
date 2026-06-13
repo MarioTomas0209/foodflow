@@ -12,6 +12,8 @@ use App\Http\Controllers\Public\CustomerAuthController;
 use App\Http\Controllers\Public\CustomerOrderController;
 use App\Http\Controllers\Public\OrderController;
 use App\Http\Controllers\Public\StorefrontController;
+use App\Http\Controllers\Public\StorefrontManifestController;
+use App\Http\Controllers\Public\StorefrontPwaAssetController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -78,6 +80,21 @@ Route::middleware('auth.customer')->group(function () use ($slugPattern) {
 Route::get('/{slug}/checkout', [OrderController::class, 'checkout'])->name('storefront.checkout')->where('slug', $slugPattern);
 Route::get('/{slug}/maps/resolve', [OrderController::class, 'resolveMapsUrl'])->name('storefront.maps.resolve')->where('slug', $slugPattern);
 Route::post('/{slug}/orders', [OrderController::class, 'store'])->name('storefront.orders.store')->where('slug', $slugPattern);
+
+Route::get('/{slug}/manifest.webmanifest', [StorefrontManifestController::class, 'show'])
+    ->name('storefront.manifest')
+    ->where('slug', $slugPattern);
+Route::get('/{slug}/pwa/icon-{size}.png', [StorefrontPwaAssetController::class, 'icon'])
+    ->name('storefront.pwa.icon')
+    ->where('slug', $slugPattern)
+    ->whereNumber('size');
+Route::get('/{slug}/pwa/icon-maskable.png', [StorefrontPwaAssetController::class, 'maskableIcon'])
+    ->name('storefront.pwa.icon-maskable')
+    ->where('slug', $slugPattern);
+Route::get('/{slug}/pwa/splash-{width}x{height}.png', [StorefrontPwaAssetController::class, 'splash'])
+    ->name('storefront.pwa.splash')
+    ->where('slug', $slugPattern)
+    ->whereNumber(['width', 'height']);
 
 Route::get('/{slug}', [StorefrontController::class, 'show'])
     ->name('storefront.show')

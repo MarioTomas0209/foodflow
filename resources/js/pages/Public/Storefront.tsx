@@ -16,6 +16,7 @@ import { validateCartAgainstCatalog } from '@/lib/cart-stock';
 import { saveCartForCheckout } from '@/lib/cart-storage';
 import { formatCategoryAvailabilityMessage, isCategoryScheduleBannerAnticipated, isCategoryScheduleBannerWarning, shouldShowCategoryScheduleBanner } from '@/lib/category-schedule';
 import { getCategoryForCartItem } from '@/lib/cart-stock';
+import { scrollDocumentToTop } from '@/lib/scroll';
 import { storefrontAccent } from '@/lib/storefront-theme';
 import { cn } from '@/lib/utils';
 import { useNamedRoute } from '@/lib/ziggy';
@@ -58,6 +59,10 @@ export default function Storefront({ organization, daily_menu, categories }: Sto
         const top = el.getBoundingClientRect().top + window.scrollY - getStorefrontScrollOffset();
 
         window.scrollTo({ top, behavior: 'smooth' });
+    }, []);
+
+    useEffect(() => {
+        scrollDocumentToTop();
     }, []);
 
     useEffect(() => {
