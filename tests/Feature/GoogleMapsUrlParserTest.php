@@ -132,6 +132,32 @@ test('google maps url parser geocodes place name when html has no usable coordin
     expect($coords)->toBe(['latitude' => 16.25, 'longitude' => -92.13]);
 });
 
+test('google maps url parser resolves exact place pin via google feature id cid', function () {
+    Http::fake([
+        'maps.app.goo.gl/*' => Http::response('', 302, [
+            'Location' => 'https://www.google.com/maps/place/El+Arenal,+Comit%C3%A1n+de+Dom%C3%ADnguez,+Chis.,+Mexico/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+        ]),
+        'www.google.com/*' => Http::response('<html>no coordinates here</html>', 200),
+        'maps.googleapis.com/maps/api/place/details/json*' => Http::response([
+            'status' => 'OK',
+            'result' => [
+                'geometry' => [
+                    'location' => [
+                        'lat' => 16.2430976,
+                        'lng' => -92.1337856,
+                    ],
+                ],
+            ],
+        ]),
+    ]);
+
+    config(['services.google_maps.api_key' => 'test-google-key']);
+
+    $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/NcUut5SKowPfppfJ8');
+
+    expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
+});
+
 test('google maps url parser prefers geocode results near delivery zones', function () {
     Http::fake([
         'maps.app.goo.gl/*' => Http::response('', 302, [

@@ -212,6 +212,16 @@ class GoogleMapsUrlParser
             return $parsed;
         }
 
+        $featureId = self::extractGoogleFeatureId($url);
+
+        if ($featureId !== null) {
+            $coords = self::placeDetailsWithFeatureId($featureId, $context);
+
+            if ($coords !== null) {
+                return $coords;
+            }
+        }
+
         $query = self::extractPlaceQueryFromMapsUrl($url);
 
         if ($query === null) {
@@ -219,6 +229,107 @@ class GoogleMapsUrlParser
         }
 
         return self::geocodePlaceQuery($query, $context);
+    }
+
+    private static function extractGoogleFeatureId(string $url): ?string
+    {
+        $decoded = urldecode($url);
+
+        if (preg_match('/1s(0x[a-f0-9]+:0x[a-f0-9]+)/i', $decoded, $matches)) {
+            return strtolower($matches[1]);
+        }
+
+        if (preg_match('/(0x[a-f0-9]+:0x[a-f0-9]+)/i', $decoded, $matches)) {
+            return strtolower($matches[1]);
+        }
+
+        return null;
+    }
+
+    private static function featureIdToCid(string $featureId): ?string
+    {
+        if (! preg_match('/0x[a-f0-9]+:(0x[a-f0-9]+)/i', $featureId, $matches)) {
+            return null;
+        }
+
+        $hex = strtolower($matches[1]);
+
+        if (function_exists('gmp_init')) {
+            return gmp_strval(gmp_init($hex, 16));
+        }
+
+        $decimal = hexdec($hex);
+
+        return is_float($decimal) ? null : (string) $decimal;
+    }
+
+    /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function placeDetailsWithFeatureId(string $featureId, array $context): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
+        $cid = self::featureIdToCid($featureId);
+
+        if ($cid === null) {
+            return null;
+        }
+
+        $cacheKey = 'google_maps_cid:v1:'.md5($featureId);
+        $cached = Cache::get($cacheKey);
+
+        if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
+            return $cached;
+        }
+
+        try {
+            $response = self::httpClient()
+                ->get('https://maps.googleapis.com/maps/api/place/details/json', [
+                    'cid' => $cid,
+                    'fields' => 'geometry,name,formatted_address',
+                    'language' => 'es',
+                    'key' => $apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            self::logGoogleApiStatus('Place Details (CID)', $response->json('status'), $response->json('error_message'));
+
+            $location = $response->json('result.geometry.location');
+
+            if (! is_array($location)) {
+                return null;
+            }
+
+            $coords = self::coordsFromPair(
+                (float) ($location['lat'] ?? 0),
+                (float) ($location['lng'] ?? 0),
+            );
+
+            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+                return null;
+            }
+
+            Cache::put($cacheKey, $coords, now()->addDay());
+
+            return $coords;
+        } catch (\Throwable $exception) {
+            Log::warning('Google Place Details (CID) failed', [
+                'feature_id' => $featureId,
+                'cid' => $cid,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private static function extractPlaceQueryFromMapsUrl(string $url): ?string

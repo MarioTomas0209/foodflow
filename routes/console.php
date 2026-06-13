@@ -18,6 +18,7 @@ Artisan::command('maps:resolve {url} {--debug}', function (string $url) {
 
         if (is_string($apiKey) && $apiKey !== '') {
             $testQuery = 'El Arenal, Comitán de Domínguez, Chiapas, México';
+            $testFeatureId = '0x858d3f4b1a2dda23:0x24a52a261c64c5df';
 
             try {
                 $response = Http::timeout(15)
@@ -40,13 +41,41 @@ Artisan::command('maps:resolve {url} {--debug}', function (string $url) {
 
                 if (is_array($location)) {
                     $this->line(sprintf(
-                        'Geocoding test coords: %s, %s',
+                        'Geocoding por nombre (aprox.): %s, %s',
                         $location['lat'] ?? '?',
                         $location['lng'] ?? '?',
                     ));
                 }
+
+                $cid = '2652664618964656607';
+                $details = Http::timeout(15)
+                    ->get('https://maps.googleapis.com/maps/api/place/details/json', [
+                        'cid' => $cid,
+                        'fields' => 'geometry,name',
+                        'language' => 'es',
+                        'key' => $apiKey,
+                    ]);
+
+                $this->line('Place Details (CID) status: '.($details->json('status') ?? 'sin respuesta'));
+                $detailsError = $details->json('error_message');
+
+                if (is_string($detailsError) && $detailsError !== '') {
+                    $this->warn('Place Details (CID) error: '.$detailsError);
+                }
+
+                $pin = $details->json('result.geometry.location');
+
+                if (is_array($pin)) {
+                    $this->line(sprintf(
+                        'Place Details por CID (pin exacto): %s, %s',
+                        $pin['lat'] ?? '?',
+                        $pin['lng'] ?? '?',
+                    ));
+                }
+
+                $this->line('Feature ID de prueba: '.$testFeatureId);
             } catch (\Throwable $exception) {
-                $this->warn('No se pudo contactar Geocoding API: '.$exception->getMessage());
+                $this->warn('No se pudo contactar Google Maps API: '.$exception->getMessage());
             }
         }
 
