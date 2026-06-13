@@ -7,6 +7,7 @@ export interface ResolvedMapsLink {
     latitude: number | null;
     longitude: number | null;
     mapsUrl: string;
+    zoneId?: string | null;
 }
 
 function isValidCoords(latitude: number, longitude: number): boolean {
@@ -256,15 +257,17 @@ export async function resolveGoogleMapsUrl(input: string, endpoint: string): Pro
         const data = (await response.json()) as {
             latitude?: number | null;
             longitude?: number | null;
+            zone_id?: string | null;
             maps_url?: string;
         };
 
         const latitude = data.latitude ?? null;
         const longitude = data.longitude ?? null;
         const mapsUrl = data.maps_url?.trim() || trimmed;
+        const zoneId = data.zone_id ?? null;
 
         if (latitude !== null && longitude !== null && isValidCoords(latitude, longitude)) {
-            return { latitude, longitude, mapsUrl };
+            return { latitude, longitude, mapsUrl, zoneId };
         }
 
         return {

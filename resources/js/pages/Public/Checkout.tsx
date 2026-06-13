@@ -292,9 +292,13 @@ export default function Checkout({ organization, zones, customer, addresses, car
     }, [setData]);
 
     const applyCoordinates = useCallback(
-        (latitude: number | null, longitude: number | null, mapsUrl: string | null = null) => {
+        (latitude: number | null, longitude: number | null, mapsUrl: string | null = null, zoneId: string | null = null) => {
             const zone =
-                latitude !== null && longitude !== null ? findZoneForCoords(zones, latitude, longitude) : null;
+                zoneId !== null && zoneId !== ''
+                    ? (zones.find((candidate) => candidate.id === zoneId) ?? null)
+                    : latitude !== null && longitude !== null
+                      ? findZoneForCoords(zones, latitude, longitude)
+                      : null;
 
             setData((current) => ({
                 ...current,
@@ -372,7 +376,7 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     longitude: localParsed.longitude,
                     mapsUrl: trimmed,
                 };
-                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
+                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl, null);
                 return resolved;
             }
 
@@ -395,7 +399,12 @@ export default function Checkout({ organization, zones, customer, addresses, car
                     return null;
                 }
 
-                applyCoordinates(resolved.latitude, resolved.longitude, resolved.mapsUrl);
+                applyCoordinates(
+                    resolved.latitude,
+                    resolved.longitude,
+                    resolved.mapsUrl,
+                    resolved.zoneId ?? null,
+                );
                 return resolved;
             } finally {
                 setMapsLinkResolving(false);

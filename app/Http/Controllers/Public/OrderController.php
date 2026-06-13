@@ -100,7 +100,7 @@ class OrderController extends Controller
 
     public function resolveMapsUrl(Request $request, string $slug): JsonResponse
     {
-        Organization::query()
+        $organization = Organization::query()
             ->where('slug', $slug)
             ->where('status', 'active')
             ->firstOrFail();
@@ -109,16 +109,28 @@ class OrderController extends Controller
             'url' => ['required', 'string', 'max:2048'],
         ]);
 
-        $coords = GoogleMapsUrlParser::parse($validated['url']);
+        $zones = $organization->deliveryZones()
+            ->where('is_active', true)
+            ->get(['center_lat', 'center_lng', 'radius_km']);
+
+        $coords = GoogleMapsUrlParser::parse($validated['url'], $this->buildGeocodeContext($zones));
 
         if ($coords !== null) {
-            return response()->json($coords);
+            $zone = $organization->findDeliveryZoneFor($coords['latitude'], $coords['longitude']);
+
+            return response()->json([
+                'latitude' => $coords['latitude'],
+                'longitude' => $coords['longitude'],
+                'zone_id' => $zone?->id,
+                'maps_url' => trim($validated['url']),
+            ]);
         }
 
         if (GoogleMapsUrlParser::isShareUrl($validated['url'])) {
             return response()->json([
                 'latitude' => null,
                 'longitude' => null,
+                'zone_id' => null,
                 'maps_url' => trim($validated['url']),
             ]);
         }
@@ -126,6 +138,42 @@ class OrderController extends Controller
         return response()->json([
             'message' => 'No pudimos leer las coordenadas del enlace.',
         ], 422);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\DeliveryZone>  $zones
+     * @return array{
+     *   bias_lat: float,
+     *   bias_lng: float,
+     *   bias_radius_km: float,
+     *   zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>
+     * }
+     */
+    private function buildGeocodeContext($zones): array
+    {
+        if ($zones->isEmpty()) {
+            return [
+                'bias_lat' => 16.2489,
+                'bias_lng' => -92.1345,
+                'bias_radius_km' => 20.0,
+                'zones' => [],
+            ];
+        }
+
+        $centerLat = (float) $zones->avg(fn ($zone) => (float) $zone->center_lat);
+        $centerLng = (float) $zones->avg(fn ($zone) => (float) $zone->center_lng);
+        $maxRadius = (float) $zones->max(fn ($zone) => (float) $zone->radius_km);
+
+        return [
+            'bias_lat' => $centerLat,
+            'bias_lng' => $centerLng,
+            'bias_radius_km' => max($maxRadius + 5, 15.0),
+            'zones' => $zones->map(fn ($zone) => [
+                'center_lat' => $zone->center_lat,
+                'center_lng' => $zone->center_lng,
+                'radius_km' => $zone->radius_km,
+            ])->values()->all(),
+        ];
     }
 
     public function store(Request $request, string $slug): RedirectResponse
@@ -320,7 +368,14 @@ class OrderController extends Controller
             $longitude = $validated['longitude'] ?? null;
 
             if (($latitude === null || $longitude === null) && ! empty($validated['delivery_maps_url'])) {
-                $parsedCoords = GoogleMapsUrlParser::parse($validated['delivery_maps_url']);
+                $deliveryZones = $organization->deliveryZones()
+                    ->where('is_active', true)
+                    ->get(['center_lat', 'center_lng', 'radius_km']);
+
+                $parsedCoords = GoogleMapsUrlParser::parse(
+                    $validated['delivery_maps_url'],
+                    $this->buildGeocodeContext($deliveryZones),
+                );
 
                 if ($parsedCoords !== null) {
                     $latitude = $parsedCoords['latitude'];

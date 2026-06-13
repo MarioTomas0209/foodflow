@@ -132,6 +132,34 @@ test('google maps url parser geocodes place name when html has no usable coordin
     expect($coords)->toBe(['latitude' => 16.25, 'longitude' => -92.13]);
 });
 
+test('google maps url parser prefers geocode results near delivery zones', function () {
+    Http::fake([
+        'maps.app.goo.gl/*' => Http::response('', 302, [
+            'Location' => 'https://www.google.com/maps/place/El+Arenal,+Comit%C3%A1n+de+Dom%C3%ADnguez,+Chis.,+Mexico/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+        ]),
+        'www.google.com/*' => Http::response('<html>no coordinates here</html>', 200),
+        'nominatim.openstreetmap.org/*' => Http::response([
+            ['lat' => '16.2528813', 'lon' => '-92.3021078', 'display_name' => 'El Arenal, Chiapas, México'],
+            ['lat' => '16.2430976', 'lon' => '-92.1337856', 'display_name' => 'El Arenal, Comitán de Domínguez, Chiapas, México'],
+        ]),
+    ]);
+
+    $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/NcUut5SKowPfppfJ8', [
+        'bias_lat' => 16.2489,
+        'bias_lng' => -92.1345,
+        'bias_radius_km' => 15,
+        'zones' => [
+            [
+                'center_lat' => 16.2489,
+                'center_lng' => -92.1345,
+                'radius_km' => 8,
+            ],
+        ],
+    ]);
+
+    expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
+});
+
 test('google maps share url detection works for goo.gl links', function () {
     expect(GoogleMapsUrlParser::isShareUrl('https://maps.app.goo.gl/QmksuekEcDxhsjfq9'))->toBeTrue();
 });

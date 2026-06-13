@@ -15,7 +15,7 @@ Artisan::command('maps:resolve {url}', function (string $url) {
         $this->error('No se pudieron extraer coordenadas.');
         $this->line('El servidor sigue el enlace goo.gl, lee el nombre del lugar y lo geocodifica (Nominatim o Google Geocoding API).');
         $this->line('Opcional: define GOOGLE_MAPS_API_KEY en .env para mayor precisión.');
-        $this->line('Revisa storage/logs/laravel.log si el hosting bloquea salida HTTPS a nominatim.openstreetmap.org o google.com.');
+        $this->line('Tras desplegar cambios de geocodificación, ejecuta: php artisan cache:clear');
 
         return 1;
     }

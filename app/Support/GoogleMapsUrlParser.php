@@ -29,6 +29,13 @@ class GoogleMapsUrlParser
         'max_lng' => -86.5,
     ];
 
+    /** Default bias for Comitán de Domínguez when no organization zones are available. */
+    private const DEFAULT_GEOCODE_CONTEXT = [
+        'bias_lat' => 16.2489,
+        'bias_lng' => -92.1345,
+        'bias_radius_km' => 20.0,
+    ];
+
     public static function isShareUrl(string $input): bool
     {
         $url = self::normalizeUrl(trim($input));
@@ -37,10 +44,17 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{
+     *   bias_lat?: float,
+     *   bias_lng?: float,
+     *   bias_radius_km?: float,
+     *   zones?: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>
+     * }|null  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    public static function parse(string $input): ?array
+    public static function parse(string $input, ?array $context = null): ?array
     {
+        $geocodeContext = self::resolveGeocodeContext($context);
         $trimmed = trim($input);
 
         if ($trimmed === '') {
@@ -65,19 +79,20 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        $parsed = self::fetchCoordinatesManually($url);
+        $parsed = self::fetchCoordinatesManually($url, $geocodeContext);
 
         if ($parsed !== null) {
             return $parsed;
         }
 
-        return self::fetchFollowingRedirects($url);
+        return self::fetchFollowingRedirects($url, $geocodeContext);
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function fetchFollowingRedirects(string $url): ?array
+    private static function fetchFollowingRedirects(string $url, array $context): ?array
     {
         try {
             $response = self::httpClient(followRedirects: true)->get(self::localizeGoogleMapsUrl($url));
@@ -97,7 +112,7 @@ class GoogleMapsUrlParser
                 }
             }
 
-            return self::geocodeFromMapsUrl($effectiveUrl);
+            return self::geocodeFromMapsUrl($effectiveUrl, $context);
         } catch (\Throwable $exception) {
             Log::warning('Google Maps auto-redirect fetch failed', [
                 'url' => $url,
@@ -109,9 +124,10 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function fetchCoordinatesManually(string $url): ?array
+    private static function fetchCoordinatesManually(string $url, array $context): ?array
     {
         $current = $url;
         $lastGoogleMapsUrl = null;
@@ -178,16 +194,17 @@ class GoogleMapsUrlParser
         }
 
         if ($lastGoogleMapsUrl !== null) {
-            return self::geocodeFromMapsUrl($lastGoogleMapsUrl);
+            return self::geocodeFromMapsUrl($lastGoogleMapsUrl, $context);
         }
 
         return null;
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function geocodeFromMapsUrl(string $url): ?array
+    private static function geocodeFromMapsUrl(string $url, array $context): ?array
     {
         $parsed = self::parseUrlString($url);
 
@@ -201,7 +218,7 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        return self::geocodePlaceQuery($query);
+        return self::geocodePlaceQuery($query, $context);
     }
 
     private static function extractPlaceQueryFromMapsUrl(string $url): ?string
@@ -224,9 +241,10 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function geocodePlaceQuery(string $query): ?array
+    private static function geocodePlaceQuery(string $query, array $context): ?array
     {
         $normalizedQuery = mb_strtolower(trim($query));
 
@@ -234,14 +252,14 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        $cacheKey = 'google_maps_geocode:'.md5($normalizedQuery);
+        $cacheKey = 'google_maps_geocode:v2:'.md5($normalizedQuery.'|'.round($context['bias_lat'], 3).','.round($context['bias_lng'], 3));
         $cached = Cache::get($cacheKey);
 
         if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
             return $cached;
         }
 
-        $coords = self::geocodeWithGoogle($query) ?? self::geocodeWithNominatim($query);
+        $coords = self::geocodeWithGoogle($query, $context) ?? self::geocodeWithNominatim($query, $context);
 
         if ($coords !== null) {
             Cache::put($cacheKey, $coords, now()->addDay());
@@ -251,15 +269,22 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function geocodeWithGoogle(string $query): ?array
+    private static function geocodeWithGoogle(string $query, array $context): ?array
     {
         $apiKey = config('services.google_maps.api_key');
 
         if (! is_string($apiKey) || $apiKey === '') {
             return null;
         }
+
+        $biasLat = $context['bias_lat'];
+        $biasLng = $context['bias_lng'];
+        $biasRadius = $context['bias_radius_km'];
+        $latDelta = $biasRadius / 111.0;
+        $lngDelta = $biasRadius / (111.0 * cos(deg2rad($biasLat)));
 
         try {
             $response = self::httpClient()
@@ -268,6 +293,13 @@ class GoogleMapsUrlParser
                     'key' => $apiKey,
                     'region' => 'mx',
                     'language' => 'es',
+                    'bounds' => sprintf(
+                        '%s,%s|%s,%s',
+                        $biasLat - $latDelta,
+                        $biasLng - $lngDelta,
+                        $biasLat + $latDelta,
+                        $biasLng + $lngDelta,
+                    ),
                 ]);
 
             if (! $response->successful()) {
@@ -280,22 +312,26 @@ class GoogleMapsUrlParser
                 return null;
             }
 
-            $location = $results[0]['geometry']['location'] ?? null;
+            $candidates = [];
 
-            if (! is_array($location)) {
-                return null;
+            foreach ($results as $result) {
+                $location = $result['geometry']['location'] ?? null;
+
+                if (! is_array($location)) {
+                    continue;
+                }
+
+                $coords = self::coordsFromPair(
+                    (float) ($location['lat'] ?? 0),
+                    (float) ($location['lng'] ?? 0),
+                );
+
+                if ($coords !== null) {
+                    $candidates[] = $coords;
+                }
             }
 
-            $coords = self::coordsFromPair(
-                (float) ($location['lat'] ?? 0),
-                (float) ($location['lng'] ?? 0),
-            );
-
-            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
-                return null;
-            }
-
-            return $coords;
+            return self::selectBestGeocodeCandidate($candidates, $context);
         } catch (\Throwable $exception) {
             Log::warning('Google Geocoding API failed', [
                 'query' => $query,
@@ -307,52 +343,213 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
      * @return array{latitude: float, longitude: float}|null
      */
-    private static function geocodeWithNominatim(string $query): ?array
+    private static function geocodeWithNominatim(string $query, array $context): ?array
     {
-        try {
-            $response = Http::timeout(15)
-                ->withHeaders([
-                    'User-Agent' => self::NOMINATIM_USER_AGENT,
-                    'Accept' => 'application/json',
-                ])
-                ->retry(1, 300)
-                ->get('https://nominatim.openstreetmap.org/search', [
+        $biasLat = $context['bias_lat'];
+        $biasLng = $context['bias_lng'];
+        $biasRadius = $context['bias_radius_km'];
+        $latDelta = $biasRadius / 111.0;
+        $lngDelta = $biasRadius / (111.0 * cos(deg2rad($biasLat)));
+        $viewbox = sprintf(
+            '%s,%s,%s,%s',
+            $biasLng - $lngDelta,
+            $biasLat + $latDelta,
+            $biasLng + $lngDelta,
+            $biasLat - $latDelta,
+        );
+
+        foreach ([true, false] as $bounded) {
+            try {
+                $params = [
                     'q' => $query,
                     'format' => 'json',
-                    'limit' => 1,
+                    'limit' => 5,
                     'countrycodes' => 'mx',
+                ];
+
+                if ($bounded) {
+                    $params['viewbox'] = $viewbox;
+                    $params['bounded'] = 1;
+                }
+
+                $response = Http::timeout(15)
+                    ->withHeaders([
+                        'User-Agent' => self::NOMINATIM_USER_AGENT,
+                        'Accept' => 'application/json',
+                    ])
+                    ->retry(1, 300)
+                    ->get('https://nominatim.openstreetmap.org/search', $params);
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $results = $response->json();
+
+                if (! is_array($results) || $results === []) {
+                    continue;
+                }
+
+                $candidates = [];
+
+                foreach ($results as $result) {
+                    $coords = self::coordsFromPair(
+                        (float) ($result['lat'] ?? 0),
+                        (float) ($result['lon'] ?? 0),
+                    );
+
+                    if ($coords !== null) {
+                        $candidates[] = $coords;
+                    }
+                }
+
+                $selected = self::selectBestGeocodeCandidate($candidates, $context);
+
+                if ($selected !== null) {
+                    return $selected;
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Nominatim geocoding failed', [
+                    'query' => $query,
+                    'bounded' => $bounded,
+                    'error' => $exception->getMessage(),
                 ]);
-
-            if (! $response->successful()) {
-                return null;
             }
+        }
 
-            $results = $response->json();
+        return null;
+    }
 
-            if (! is_array($results) || $results === []) {
-                return null;
-            }
+    /**
+     * @param  list<array{latitude: float, longitude: float}>  $candidates
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function selectBestGeocodeCandidate(array $candidates, array $context): ?array
+    {
+        $inMexico = array_values(array_filter(
+            $candidates,
+            fn (array $coords) => self::isWithinMexico($coords['latitude'], $coords['longitude']),
+        ));
 
-            $coords = self::coordsFromPair(
-                (float) ($results[0]['lat'] ?? 0),
-                (float) ($results[0]['lon'] ?? 0),
-            );
-
-            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
-                return null;
-            }
-
-            return $coords;
-        } catch (\Throwable $exception) {
-            Log::warning('Nominatim geocoding failed', [
-                'query' => $query,
-                'error' => $exception->getMessage(),
-            ]);
-
+        if ($inMexico === []) {
             return null;
         }
+
+        $zones = $context['zones'];
+
+        if ($zones !== []) {
+            $insideZone = array_values(array_filter(
+                $inMexico,
+                fn (array $coords) => self::matchesAnyDeliveryZone($coords, $zones),
+            ));
+
+            if ($insideZone !== []) {
+                return self::closestToBias($insideZone, $context);
+            }
+        }
+
+        $withinBias = array_values(array_filter(
+            $inMexico,
+            fn (array $coords) => self::distanceKm(
+                $coords['latitude'],
+                $coords['longitude'],
+                $context['bias_lat'],
+                $context['bias_lng'],
+            ) <= $context['bias_radius_km'],
+        ));
+
+        return self::closestToBias($withinBias !== [] ? $withinBias : $inMexico, $context);
+    }
+
+    /**
+     * @param  list<array{latitude: float, longitude: float}>  $candidates
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function closestToBias(array $candidates, array $context): ?array
+    {
+        if ($candidates === []) {
+            return null;
+        }
+
+        usort(
+            $candidates,
+            fn (array $left, array $right) => self::distanceKm(
+                $left['latitude'],
+                $left['longitude'],
+                $context['bias_lat'],
+                $context['bias_lng'],
+            ) <=> self::distanceKm(
+                $right['latitude'],
+                $right['longitude'],
+                $context['bias_lat'],
+                $context['bias_lng'],
+            ),
+        );
+
+        return $candidates[0];
+    }
+
+    /**
+     * @param  list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>  $zones
+     */
+    private static function matchesAnyDeliveryZone(array $coords, array $zones): bool
+    {
+        foreach ($zones as $zone) {
+            if (self::distanceKm(
+                $coords['latitude'],
+                $coords['longitude'],
+                (float) $zone['center_lat'],
+                (float) $zone['center_lng'],
+            ) <= (float) $zone['radius_km']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earthRadiusKm = 6371;
+        $latFrom = deg2rad($lat1);
+        $lngFrom = deg2rad($lng1);
+        $latTo = deg2rad($lat2);
+        $lngTo = deg2rad($lng2);
+        $latDelta = $latTo - $latFrom;
+        $lngDelta = $lngTo - $lngFrom;
+        $angle = 2 * asin(sqrt(
+            sin($latDelta / 2) ** 2
+            + cos($latFrom) * cos($latTo) * sin($lngDelta / 2) ** 2
+        ));
+
+        return $angle * $earthRadiusKm;
+    }
+
+    /**
+     * @param  array{
+     *   bias_lat?: float,
+     *   bias_lng?: float,
+     *   bias_radius_km?: float,
+     *   zones?: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>
+     * }|null  $context
+     * @return array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}
+     */
+    private static function resolveGeocodeContext(?array $context): array
+    {
+        $resolved = array_merge(self::DEFAULT_GEOCODE_CONTEXT, $context ?? []);
+        $resolved['zones'] = $context['zones'] ?? [];
+
+        return [
+            'bias_lat' => (float) $resolved['bias_lat'],
+            'bias_lng' => (float) $resolved['bias_lng'],
+            'bias_radius_km' => (float) $resolved['bias_radius_km'],
+            'zones' => $resolved['zones'],
+        ];
     }
 
     private static function localizeGoogleMapsUrl(string $url): string
