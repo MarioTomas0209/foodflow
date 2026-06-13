@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,6 +18,8 @@ class GoogleMapsUrlParser
     ];
 
     private const BROWSER_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36';
+
+    private const NOMINATIM_USER_AGENT = 'FoodFlow/1.0 (https://foodflow.bookzy.mx; delivery maps resolver)';
 
     /** Rough bounds for Mexico — filters datacenter-biased defaults from US servers. */
     private const MEXICO_BOUNDS = [
@@ -87,8 +90,14 @@ class GoogleMapsUrlParser
             }
 
             if ($response->successful()) {
-                return self::parseEmbeddedCoords($response->body());
+                $parsed = self::parseEmbeddedCoords($response->body());
+
+                if ($parsed !== null) {
+                    return $parsed;
+                }
             }
+
+            return self::geocodeFromMapsUrl($effectiveUrl);
         } catch (\Throwable $exception) {
             Log::warning('Google Maps auto-redirect fetch failed', [
                 'url' => $url,
@@ -105,10 +114,15 @@ class GoogleMapsUrlParser
     private static function fetchCoordinatesManually(string $url): ?array
     {
         $current = $url;
+        $lastGoogleMapsUrl = null;
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
             if (! self::isAllowedUrl($current)) {
                 break;
+            }
+
+            if (self::isGoogleMapsUrl($current)) {
+                $lastGoogleMapsUrl = $current;
             }
 
             try {
@@ -144,6 +158,11 @@ class GoogleMapsUrlParser
                 }
 
                 $resolvedLocation = self::resolveLocation($current, $location);
+
+                if (self::isGoogleMapsUrl($resolvedLocation)) {
+                    $lastGoogleMapsUrl = $resolvedLocation;
+                }
+
                 $parsed = self::parseUrlString($resolvedLocation);
 
                 if ($parsed !== null) {
@@ -158,7 +177,182 @@ class GoogleMapsUrlParser
             break;
         }
 
+        if ($lastGoogleMapsUrl !== null) {
+            return self::geocodeFromMapsUrl($lastGoogleMapsUrl);
+        }
+
         return null;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function geocodeFromMapsUrl(string $url): ?array
+    {
+        $parsed = self::parseUrlString($url);
+
+        if ($parsed !== null) {
+            return $parsed;
+        }
+
+        $query = self::extractPlaceQueryFromMapsUrl($url);
+
+        if ($query === null) {
+            return null;
+        }
+
+        return self::geocodePlaceQuery($query);
+    }
+
+    private static function extractPlaceQueryFromMapsUrl(string $url): ?string
+    {
+        $decoded = urldecode($url);
+
+        if (preg_match('#/maps/place/([^/@]+)#', $decoded, $matches)) {
+            $place = trim(str_replace('+', ' ', $matches[1]));
+
+            return $place !== '' ? $place : null;
+        }
+
+        if (preg_match('#/maps/search/([^/@]+)#', $decoded, $matches)) {
+            $place = trim(str_replace('+', ' ', $matches[1]));
+
+            return $place !== '' ? $place : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function geocodePlaceQuery(string $query): ?array
+    {
+        $normalizedQuery = mb_strtolower(trim($query));
+
+        if ($normalizedQuery === '') {
+            return null;
+        }
+
+        $cacheKey = 'google_maps_geocode:'.md5($normalizedQuery);
+        $cached = Cache::get($cacheKey);
+
+        if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
+            return $cached;
+        }
+
+        $coords = self::geocodeWithGoogle($query) ?? self::geocodeWithNominatim($query);
+
+        if ($coords !== null) {
+            Cache::put($cacheKey, $coords, now()->addDay());
+        }
+
+        return $coords;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function geocodeWithGoogle(string $query): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
+        try {
+            $response = self::httpClient()
+                ->get('https://maps.googleapis.com/maps/api/geocode/json', [
+                    'address' => $query,
+                    'key' => $apiKey,
+                    'region' => 'mx',
+                    'language' => 'es',
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $results = $response->json('results');
+
+            if (! is_array($results) || $results === []) {
+                return null;
+            }
+
+            $location = $results[0]['geometry']['location'] ?? null;
+
+            if (! is_array($location)) {
+                return null;
+            }
+
+            $coords = self::coordsFromPair(
+                (float) ($location['lat'] ?? 0),
+                (float) ($location['lng'] ?? 0),
+            );
+
+            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+                return null;
+            }
+
+            return $coords;
+        } catch (\Throwable $exception) {
+            Log::warning('Google Geocoding API failed', [
+                'query' => $query,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function geocodeWithNominatim(string $query): ?array
+    {
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'User-Agent' => self::NOMINATIM_USER_AGENT,
+                    'Accept' => 'application/json',
+                ])
+                ->retry(1, 300)
+                ->get('https://nominatim.openstreetmap.org/search', [
+                    'q' => $query,
+                    'format' => 'json',
+                    'limit' => 1,
+                    'countrycodes' => 'mx',
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $results = $response->json();
+
+            if (! is_array($results) || $results === []) {
+                return null;
+            }
+
+            $coords = self::coordsFromPair(
+                (float) ($results[0]['lat'] ?? 0),
+                (float) ($results[0]['lon'] ?? 0),
+            );
+
+            if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
+                return null;
+            }
+
+            return $coords;
+        } catch (\Throwable $exception) {
+            Log::warning('Nominatim geocoding failed', [
+                'query' => $query,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private static function localizeGoogleMapsUrl(string $url): string
@@ -365,6 +559,22 @@ class GoogleMapsUrlParser
             'latitude' => $latitude,
             'longitude' => $longitude,
         ];
+    }
+
+    private static function isGoogleMapsUrl(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        if (! is_string($host) || $host === '') {
+            return false;
+        }
+
+        $host = strtolower($host);
+
+        return $host === 'maps.google.com'
+            || $host === 'www.google.com'
+            || $host === 'google.com'
+            || str_ends_with($host, '.google.com');
     }
 
     private static function isAllowedUrl(string $url): bool

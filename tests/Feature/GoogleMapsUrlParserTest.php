@@ -102,15 +102,34 @@ test('google maps url parser ignores datacenter-biased coordinates outside Mexic
     Http::fake([
         'maps.app.goo.gl/*' => Http::sequence()
             ->push('', 302, [
-                'Location' => 'https://www.google.com/maps/place/El+Arenal/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+                'Location' => 'https://www.google.com/maps/place/El+Arenal,+Comit%C3%A1n+de+Dom%C3%ADnguez,+Chis.,+Mexico/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
             ])
-            ->push('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1],null,null,["0x858d3f4b1a2dda23:0x24a52a261c64c5df"],"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0]]</script>', 200),
-        'www.google.com/*' => Http::response('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1],null,null,["0x858d3f4b1a2dda23:0x24a52a261c64c5df"],"mx",[[30644.47,-92.1337856,16.2430976],[0,0,0]]</script>', 200),
+            ->push('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1]</script>', 200),
+        'www.google.com/*' => Http::response('<script>"mx",[[42.474016,-71.208023,42.474016],[0,0,0],[1024,768],13.1]</script>', 200),
+        'nominatim.openstreetmap.org/*' => Http::response([
+            ['lat' => '16.2430976', 'lon' => '-92.1337856', 'display_name' => 'El Arenal, Comitán de Domínguez, Chiapas, México'],
+        ]),
     ]);
 
     $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/NcUut5SKowPfppfJ8');
 
     expect($coords)->toBe(['latitude' => 16.2430976, 'longitude' => -92.1337856]);
+});
+
+test('google maps url parser geocodes place name when html has no usable coordinates', function () {
+    Http::fake([
+        'maps.app.goo.gl/*' => Http::response('', 302, [
+            'Location' => 'https://www.google.com/maps/place/El+Arenal,+Comit%C3%A1n+de+Dom%C3%ADnguez,+Chis.,+Mexico/data=!4m2!3m1!1s0x858d3f4b1a2dda23:0x24a52a261c64c5df',
+        ]),
+        'www.google.com/*' => Http::response('<html>no coordinates here</html>', 200),
+        'nominatim.openstreetmap.org/*' => Http::response([
+            ['lat' => '16.2500', 'lon' => '-92.1300', 'display_name' => 'El Arenal, Comitán de Domínguez, Chiapas, México'],
+        ]),
+    ]);
+
+    $coords = GoogleMapsUrlParser::parse('https://maps.app.goo.gl/vMnkbZ83nMbpzusD7?g_st=ac');
+
+    expect($coords)->toBe(['latitude' => 16.25, 'longitude' => -92.13]);
 });
 
 test('google maps share url detection works for goo.gl links', function () {
