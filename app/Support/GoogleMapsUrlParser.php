@@ -19,6 +19,8 @@ class GoogleMapsUrlParser
 
     private const BROWSER_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36';
 
+    private const DESKTOP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
     private const NOMINATIM_USER_AGENT = 'FoodFlow/1.0 (https://foodflow.bookzy.mx; delivery maps resolver)';
 
     /** Rough bounds for Mexico — filters datacenter-biased defaults from US servers. */
@@ -102,30 +104,38 @@ class GoogleMapsUrlParser
      */
     private static function fetchFollowingRedirects(string $url, array $context): ?array
     {
-        try {
-            $response = self::httpClient(followRedirects: true)->get(self::localizeGoogleMapsUrl($url));
-            $effectiveUrl = (string) ($response->effectiveUri() ?? $url);
+        foreach ([self::DESKTOP_USER_AGENT, self::BROWSER_USER_AGENT] as $userAgent) {
+            try {
+                $response = self::httpClient(followRedirects: true, userAgent: $userAgent)
+                    ->get(self::localizeGoogleMapsUrl($url));
+                $effectiveUrl = (string) ($response->effectiveUri() ?? $url);
 
-            $parsed = self::parseUrlString($effectiveUrl);
-
-            if ($parsed !== null) {
-                return $parsed;
-            }
-
-            if ($response->successful()) {
-                $parsed = self::parseEmbeddedCoords($response->body());
+                $parsed = self::parseUrlString($effectiveUrl);
 
                 if ($parsed !== null) {
                     return $parsed;
                 }
-            }
 
-            return self::geocodeFromMapsUrl($effectiveUrl, $context);
-        } catch (\Throwable $exception) {
-            Log::warning('Google Maps auto-redirect fetch failed', [
-                'url' => $url,
-                'error' => $exception->getMessage(),
-            ]);
+                if ($response->successful()) {
+                    $parsed = self::parseEmbeddedCoords($response->body());
+
+                    if ($parsed !== null) {
+                        return $parsed;
+                    }
+                }
+
+                $parsed = self::geocodeFromMapsUrl($effectiveUrl, $context);
+
+                if ($parsed !== null) {
+                    return $parsed;
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Google Maps auto-redirect fetch failed', [
+                    'url' => $url,
+                    'user_agent' => $userAgent,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         return null;
@@ -136,6 +146,35 @@ class GoogleMapsUrlParser
      * @return array{latitude: float, longitude: float}|null
      */
     private static function fetchCoordinatesManually(string $url, array $context): ?array
+    {
+        $lastGoogleMapsUrl = null;
+
+        foreach ([self::DESKTOP_USER_AGENT, self::BROWSER_USER_AGENT] as $userAgent) {
+            $walked = self::walkRedirectChain($url, $userAgent);
+
+            if ($walked['coords'] !== null) {
+                return $walked['coords'];
+            }
+
+            if ($walked['last_google_maps_url'] !== null) {
+                $lastGoogleMapsUrl = $walked['last_google_maps_url'];
+            }
+        }
+
+        if ($lastGoogleMapsUrl !== null) {
+            return self::geocodeFromMapsUrl($lastGoogleMapsUrl, $context);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{
+     *   coords: array{latitude: float, longitude: float}|null,
+     *   last_google_maps_url: string|null
+     * }
+     */
+    private static function walkRedirectChain(string $url, string $userAgent): array
     {
         $current = $url;
         $lastGoogleMapsUrl = null;
@@ -150,10 +189,11 @@ class GoogleMapsUrlParser
             }
 
             try {
-                $response = self::httpClient()->get(self::localizeGoogleMapsUrl($current));
+                $response = self::httpClient(userAgent: $userAgent)->get(self::localizeGoogleMapsUrl($current));
             } catch (\Throwable $exception) {
                 Log::warning('Google Maps manual fetch failed', [
                     'url' => $current,
+                    'user_agent' => $userAgent,
                     'error' => $exception->getMessage(),
                 ]);
 
@@ -163,14 +203,20 @@ class GoogleMapsUrlParser
             $parsed = self::parseUrlString($current);
 
             if ($parsed !== null) {
-                return $parsed;
+                return [
+                    'coords' => $parsed,
+                    'last_google_maps_url' => $lastGoogleMapsUrl,
+                ];
             }
 
             if ($response->successful()) {
                 $parsed = self::parseEmbeddedCoords($response->body());
 
                 if ($parsed !== null) {
-                    return $parsed;
+                    return [
+                        'coords' => $parsed,
+                        'last_google_maps_url' => $lastGoogleMapsUrl,
+                    ];
                 }
             }
 
@@ -190,7 +236,10 @@ class GoogleMapsUrlParser
                 $parsed = self::parseUrlString($resolvedLocation);
 
                 if ($parsed !== null) {
-                    return $parsed;
+                    return [
+                        'coords' => $parsed,
+                        'last_google_maps_url' => $lastGoogleMapsUrl,
+                    ];
                 }
 
                 $current = $resolvedLocation;
@@ -201,11 +250,42 @@ class GoogleMapsUrlParser
             break;
         }
 
-        if ($lastGoogleMapsUrl !== null) {
-            return self::geocodeFromMapsUrl($lastGoogleMapsUrl, $context);
+        return [
+            'coords' => null,
+            'last_google_maps_url' => $lastGoogleMapsUrl,
+        ];
+    }
+
+    /**
+     * @return array{desktop: string|null, mobile: string|null}
+     */
+    public static function debugRedirectUrls(string $url): array
+    {
+        $normalized = self::normalizeUrl(trim($url));
+
+        if ($normalized === null) {
+            return [
+                'desktop' => null,
+                'mobile' => null,
+            ];
         }
 
-        return null;
+        $normalized = self::normalizeShareUrl($normalized);
+
+        $urls = [
+            'desktop' => null,
+            'mobile' => null,
+        ];
+
+        foreach ([
+            'desktop' => self::DESKTOP_USER_AGENT,
+            'mobile' => self::BROWSER_USER_AGENT,
+        ] as $label => $userAgent) {
+            $walked = self::walkRedirectChain($normalized, $userAgent);
+            $urls[$label] = $walked['last_google_maps_url'];
+        }
+
+        return $urls;
     }
 
     /**
@@ -1238,11 +1318,11 @@ class GoogleMapsUrlParser
         return $location;
     }
 
-    private static function httpClient(bool $followRedirects = false): PendingRequest
+    private static function httpClient(bool $followRedirects = false, ?string $userAgent = null): PendingRequest
     {
         $client = Http::timeout(15)
             ->withHeaders([
-                'User-Agent' => self::BROWSER_USER_AGENT,
+                'User-Agent' => $userAgent ?? self::BROWSER_USER_AGENT,
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language' => 'es-MX,es;q=0.9',
             ])

@@ -76,6 +76,16 @@ Artisan::command('maps:resolve {url} {--debug}', function (string $url) {
                 }
 
                 $this->line('Feature ID de prueba: '.$testFeatureId);
+
+                $redirects = GoogleMapsUrlParser::debugRedirectUrls($url);
+
+                if ($redirects['desktop'] !== null) {
+                    $this->line('Redirect URL (desktop): '.substr($redirects['desktop'], 0, 180));
+                }
+
+                if ($redirects['mobile'] !== null) {
+                    $this->line('Redirect URL (mobile): '.substr($redirects['mobile'], 0, 180));
+                }
             } catch (\Throwable $exception) {
                 $this->warn('No se pudo contactar Google Maps API: '.$exception->getMessage());
             }
