@@ -252,14 +252,18 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        $cacheKey = 'google_maps_geocode:v3:'.md5($normalizedQuery.'|'.round($context['bias_lat'], 3).','.round($context['bias_lng'], 3));
+        $hasGoogleApiKey = is_string(config('services.google_maps.api_key')) && config('services.google_maps.api_key') !== '';
+        $cacheKey = 'google_maps_geocode:v4:'.md5(
+            $normalizedQuery.'|'.round($context['bias_lat'], 3).','.round($context['bias_lng'], 3).'|'.($hasGoogleApiKey ? 'google' : 'osm'),
+        );
         $cached = Cache::get($cacheKey);
 
         if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
             return $cached;
         }
 
-        $coords = self::findPlaceWithGoogle($query, $context)
+        $coords = self::textSearchWithGoogle($query, $context)
+            ?? self::findPlaceWithGoogle($query, $context)
             ?? self::geocodeWithGoogle($query, $context)
             ?? self::geocodeWithNominatim($query, $context);
 
@@ -268,6 +272,75 @@ class GoogleMapsUrlParser
         }
 
         return $coords;
+    }
+
+    /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function textSearchWithGoogle(string $query, array $context): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
+        $biasLat = $context['bias_lat'];
+        $biasLng = $context['bias_lng'];
+        $radiusMeters = (int) min(max($context['bias_radius_km'] * 1000, 5000), 50000);
+
+        try {
+            $response = self::httpClient()
+                ->get('https://maps.googleapis.com/maps/api/place/textsearch/json', [
+                    'query' => $query,
+                    'location' => sprintf('%s,%s', $biasLat, $biasLng),
+                    'radius' => $radiusMeters,
+                    'region' => 'mx',
+                    'language' => 'es',
+                    'key' => $apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            self::logGoogleApiStatus('Places Text Search', $response->json('status'), $response->json('error_message'));
+
+            $results = $response->json('results');
+
+            if (! is_array($results) || $results === []) {
+                return null;
+            }
+
+            $coordsList = [];
+
+            foreach ($results as $result) {
+                $location = $result['geometry']['location'] ?? null;
+
+                if (! is_array($location)) {
+                    continue;
+                }
+
+                $coords = self::coordsFromPair(
+                    (float) ($location['lat'] ?? 0),
+                    (float) ($location['lng'] ?? 0),
+                );
+
+                if ($coords !== null) {
+                    $coordsList[] = $coords;
+                }
+            }
+
+            return self::selectBestGeocodeCandidate($coordsList, $context);
+        } catch (\Throwable $exception) {
+            Log::warning('Google Places Text Search failed', [
+                'query' => $query,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -299,6 +372,8 @@ class GoogleMapsUrlParser
             if (! $response->successful()) {
                 return null;
             }
+
+            self::logGoogleApiStatus('Places Find Place', $response->json('status'), $response->json('error_message'));
 
             $candidates = $response->json('candidates');
 
@@ -374,6 +449,8 @@ class GoogleMapsUrlParser
             if (! $response->successful()) {
                 return null;
             }
+
+            self::logGoogleApiStatus('Geocoding', $response->json('status'), $response->json('error_message'));
 
             $results = $response->json('results');
 
@@ -619,6 +696,18 @@ class GoogleMapsUrlParser
             'bias_radius_km' => (float) $resolved['bias_radius_km'],
             'zones' => $resolved['zones'],
         ];
+    }
+
+    private static function logGoogleApiStatus(string $api, mixed $status, mixed $errorMessage): void
+    {
+        if (! is_string($status) || in_array($status, ['OK', 'ZERO_RESULTS'], true)) {
+            return;
+        }
+
+        Log::warning("Google {$api} API response", [
+            'status' => $status,
+            'error' => is_string($errorMessage) ? $errorMessage : null,
+        ]);
     }
 
     private static function localizeGoogleMapsUrl(string $url): string
