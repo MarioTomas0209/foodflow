@@ -47,30 +47,32 @@ Artisan::command('maps:resolve {url} {--debug}', function (string $url) {
                     ));
                 }
 
-                $cid = '2652664618964656607';
-                $details = Http::timeout(15)
-                    ->get('https://maps.googleapis.com/maps/api/place/details/json', [
-                        'cid' => $cid,
-                        'fields' => 'geometry,name',
-                        'language' => 'es',
-                        'key' => $apiKey,
-                    ]);
+                foreach (GoogleMapsUrlParser::cidCandidatesFromFeatureId($testFeatureId) as $cid) {
+                    $details = Http::timeout(15)
+                        ->get('https://maps.googleapis.com/maps/api/place/details/json', [
+                            'cid' => $cid,
+                            'fields' => 'geometry,name',
+                            'language' => 'es',
+                            'key' => $apiKey,
+                        ]);
 
-                $this->line('Place Details (CID) status: '.($details->json('status') ?? 'sin respuesta'));
-                $detailsError = $details->json('error_message');
+                    $this->line('Place Details CID '.$cid.' status: '.($details->json('status') ?? 'sin respuesta'));
+                    $detailsError = $details->json('error_message');
 
-                if (is_string($detailsError) && $detailsError !== '') {
-                    $this->warn('Place Details (CID) error: '.$detailsError);
-                }
+                    if (is_string($detailsError) && $detailsError !== '') {
+                        $this->warn('Place Details CID error: '.$detailsError);
+                    }
 
-                $pin = $details->json('result.geometry.location');
+                    $pin = $details->json('result.geometry.location');
 
-                if (is_array($pin)) {
-                    $this->line(sprintf(
-                        'Place Details por CID (pin exacto): %s, %s',
-                        $pin['lat'] ?? '?',
-                        $pin['lng'] ?? '?',
-                    ));
+                    if (is_array($pin) && ($details->json('status') === 'OK')) {
+                        $this->line(sprintf(
+                            'Place Details por CID (pin exacto): %s, %s',
+                            $pin['lat'] ?? '?',
+                            $pin['lng'] ?? '?',
+                        ));
+                        break;
+                    }
                 }
 
                 $this->line('Feature ID de prueba: '.$testFeatureId);

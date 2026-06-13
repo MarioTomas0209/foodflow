@@ -44,6 +44,14 @@ class GoogleMapsUrlParser
     }
 
     /**
+     * @return list<string>
+     */
+    public static function cidCandidatesFromFeatureId(string $featureId): array
+    {
+        return self::featureIdToCidCandidates($featureId);
+    }
+
+    /**
      * @param  array{
      *   bias_lat?: float,
      *   bias_lng?: float,
@@ -220,6 +228,12 @@ class GoogleMapsUrlParser
             if ($coords !== null) {
                 return $coords;
             }
+
+            $coords = self::findPlaceWithGoogle($url, $context);
+
+            if ($coords !== null) {
+                return $coords;
+            }
         }
 
         $query = self::extractPlaceQueryFromMapsUrl($url);
@@ -246,21 +260,58 @@ class GoogleMapsUrlParser
         return null;
     }
 
-    private static function featureIdToCid(string $featureId): ?string
+    /**
+     * @return list<string>
+     */
+    private static function featureIdToCidCandidates(string $featureId): array
     {
-        if (! preg_match('/0x[a-f0-9]+:(0x[a-f0-9]+)/i', $featureId, $matches)) {
-            return null;
+        if (! preg_match('/(0x[a-f0-9]+):(0x[a-f0-9]+)/i', $featureId, $matches)) {
+            return [];
         }
 
-        $hex = strtolower($matches[1]);
+        $candidates = [];
+
+        foreach ([$matches[2], $matches[1]] as $hex) {
+            $decimal = self::hexToDecimalString($hex);
+
+            if ($decimal !== null && ! in_array($decimal, $candidates, true)) {
+                $candidates[] = $decimal;
+            }
+        }
+
+        return $candidates;
+    }
+
+    private static function hexToDecimalString(string $hex): ?string
+    {
+        $hex = strtolower(ltrim($hex, '0x'));
+
+        if ($hex === '' || ! preg_match('/^[a-f0-9]+$/', $hex)) {
+            return null;
+        }
 
         if (function_exists('gmp_init')) {
             return gmp_strval(gmp_init($hex, 16));
         }
 
-        $decimal = hexdec($hex);
+        if (strlen($hex) <= 15) {
+            $decimal = hexdec($hex);
 
-        return is_float($decimal) ? null : (string) $decimal;
+            return is_float($decimal) ? null : (string) $decimal;
+        }
+
+        if (function_exists('bcadd') && function_exists('bcmul')) {
+            $decimal = '0';
+
+            foreach (str_split($hex) as $digit) {
+                $decimal = bcmul($decimal, '16', 0);
+                $decimal = bcadd($decimal, (string) hexdec($digit), 0);
+            }
+
+            return $decimal;
+        }
+
+        return null;
     }
 
     /**
@@ -275,24 +326,42 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        $cid = self::featureIdToCid($featureId);
-
-        if ($cid === null) {
-            return null;
-        }
-
-        $cacheKey = 'google_maps_cid:v1:'.md5($featureId);
+        $cacheKey = 'google_maps_cid:v2:'.md5($featureId);
         $cached = Cache::get($cacheKey);
 
         if (is_array($cached) && isset($cached['latitude'], $cached['longitude'])) {
             return $cached;
         }
 
+        foreach (self::featureIdToCidCandidates($featureId) as $cid) {
+            $coords = self::placeDetailsWithCid($cid, $featureId);
+
+            if ($coords !== null) {
+                Cache::put($cacheKey, $coords, now()->addDay());
+
+                return $coords;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function placeDetailsWithCid(string $cid, string $featureId): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
         try {
             $response = self::httpClient()
                 ->get('https://maps.googleapis.com/maps/api/place/details/json', [
                     'cid' => $cid,
-                    'fields' => 'geometry,name,formatted_address',
+                    'fields' => 'geometry,name,formatted_address,place_id',
                     'language' => 'es',
                     'key' => $apiKey,
                 ]);
@@ -302,6 +371,10 @@ class GoogleMapsUrlParser
             }
 
             self::logGoogleApiStatus('Place Details (CID)', $response->json('status'), $response->json('error_message'));
+
+            if ($response->json('status') !== 'OK') {
+                return null;
+            }
 
             $location = $response->json('result.geometry.location');
 
@@ -317,8 +390,6 @@ class GoogleMapsUrlParser
             if ($coords === null || ! self::isWithinMexico($coords['latitude'], $coords['longitude'])) {
                 return null;
             }
-
-            Cache::put($cacheKey, $coords, now()->addDay());
 
             return $coords;
         } catch (\Throwable $exception) {
@@ -374,6 +445,7 @@ class GoogleMapsUrlParser
         }
 
         $coords = self::textSearchWithGoogle($query, $context)
+            ?? self::placeDetailsFromTextSearchWithGoogle($query, $context)
             ?? self::findPlaceWithGoogle($query, $context)
             ?? self::geocodeWithGoogle($query, $context)
             ?? self::geocodeWithNominatim($query, $context);
@@ -383,6 +455,93 @@ class GoogleMapsUrlParser
         }
 
         return $coords;
+    }
+
+    /**
+     * @param  array{bias_lat: float, bias_lng: float, bias_radius_km: float, zones: list<array{center_lat: float|string, center_lng: float|string, radius_km: float|string}>}  $context
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function placeDetailsFromTextSearchWithGoogle(string $query, array $context): ?array
+    {
+        $apiKey = config('services.google_maps.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return null;
+        }
+
+        $biasLat = $context['bias_lat'];
+        $biasLng = $context['bias_lng'];
+        $radiusMeters = (int) min(max($context['bias_radius_km'] * 1000, 5000), 50000);
+
+        try {
+            $search = self::httpClient()
+                ->get('https://maps.googleapis.com/maps/api/place/textsearch/json', [
+                    'query' => $query,
+                    'location' => sprintf('%s,%s', $biasLat, $biasLng),
+                    'radius' => $radiusMeters,
+                    'region' => 'mx',
+                    'language' => 'es',
+                    'key' => $apiKey,
+                ]);
+
+            if (! $search->successful()) {
+                return null;
+            }
+
+            self::logGoogleApiStatus('Places Text Search', $search->json('status'), $search->json('error_message'));
+
+            $results = $search->json('results');
+
+            if (! is_array($results) || $results === []) {
+                return null;
+            }
+
+            $coordsList = [];
+
+            foreach (array_slice($results, 0, 3) as $result) {
+                $placeId = $result['place_id'] ?? null;
+
+                if (! is_string($placeId) || $placeId === '') {
+                    continue;
+                }
+
+                $details = self::httpClient()
+                    ->get('https://maps.googleapis.com/maps/api/place/details/json', [
+                        'place_id' => $placeId,
+                        'fields' => 'geometry,name,formatted_address',
+                        'language' => 'es',
+                        'key' => $apiKey,
+                    ]);
+
+                if (! $details->successful() || $details->json('status') !== 'OK') {
+                    continue;
+                }
+
+                $location = $details->json('result.geometry.location');
+
+                if (! is_array($location)) {
+                    continue;
+                }
+
+                $coords = self::coordsFromPair(
+                    (float) ($location['lat'] ?? 0),
+                    (float) ($location['lng'] ?? 0),
+                );
+
+                if ($coords !== null) {
+                    $coordsList[] = $coords;
+                }
+            }
+
+            return self::selectBestGeocodeCandidate($coordsList, $context);
+        } catch (\Throwable $exception) {
+            Log::warning('Google Place Details from text search failed', [
+                'query' => $query,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
