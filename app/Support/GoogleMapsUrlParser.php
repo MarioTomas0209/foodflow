@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 class GoogleMapsUrlParser
@@ -48,12 +49,54 @@ class GoogleMapsUrlParser
             return null;
         }
 
-        foreach (self::resolveRedirectChain($url) as $redirectUrl) {
-            $parsed = self::parseUrlString($redirectUrl);
+        return self::fetchCoordinatesFromShareUrl($url);
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function fetchCoordinatesFromShareUrl(string $url): ?array
+    {
+        $current = $url;
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            if (! self::isAllowedUrl($current)) {
+                break;
+            }
+
+            try {
+                $response = self::httpClient()->get($current);
+            } catch (\Throwable) {
+                break;
+            }
+
+            $parsed = self::parseUrlString($current);
 
             if ($parsed !== null) {
                 return $parsed;
             }
+
+            if ($response->successful()) {
+                $parsed = self::parseEmbeddedCoords($response->body());
+
+                if ($parsed !== null) {
+                    return $parsed;
+                }
+            }
+
+            if ($response->status() >= 300 && $response->status() < 400) {
+                $location = $response->header('Location');
+
+                if (! is_string($location) || $location === '') {
+                    break;
+                }
+
+                $current = self::resolveLocation($current, $location);
+
+                continue;
+            }
+
+            break;
         }
 
         return null;
@@ -111,6 +154,10 @@ class GoogleMapsUrlParser
             return self::coordsFromPair((float) $matches[1], (float) $matches[2]);
         }
 
+        if (preg_match('/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/', $trimmed, $matches)) {
+            return self::coordsFromPair((float) $matches[2], (float) $matches[1]);
+        }
+
         if (! empty($parts['path']) && preg_match('/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/', $parts['path'], $matches)) {
             return self::coordsFromPair((float) $matches[1], (float) $matches[2]);
         }
@@ -121,6 +168,36 @@ class GoogleMapsUrlParser
 
         if (preg_match('#/(?:/|@)(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)#', $trimmed, $matches)) {
             return self::coordsFromPair((float) $matches[1], (float) $matches[2]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private static function parseEmbeddedCoords(string $content): ?array
+    {
+        $patterns = [
+            ['regex' => '/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2],
+            ['regex' => '/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1],
+            ['regex' => '/%213d(-?\d+(?:\.\d+)?)%214d(-?\d+(?:\.\d+)?)/', 'lat' => 1, 'lng' => 2],
+            ['regex' => '/%212d(-?\d+(?:\.\d+)?)%213d(-?\d+(?:\.\d+)?)/', 'lat' => 2, 'lng' => 1],
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (! preg_match($pattern['regex'], $content, $matches)) {
+                continue;
+            }
+
+            $coords = self::coordsFromPair(
+                (float) $matches[$pattern['lat']],
+                (float) $matches[$pattern['lng']],
+            );
+
+            if ($coords !== null) {
+                return $coords;
+            }
         }
 
         return null;
@@ -167,46 +244,6 @@ class GoogleMapsUrlParser
         return false;
     }
 
-    /**
-     * @return list<string>
-     */
-    private static function resolveRedirectChain(string $url): array
-    {
-        $chain = [$url];
-        $current = $url;
-
-        for ($attempt = 0; $attempt < 10; $attempt++) {
-            if (! self::isAllowedUrl($current)) {
-                break;
-            }
-
-            try {
-                $response = self::httpClient()->get($current);
-            } catch (\Throwable) {
-                break;
-            }
-
-            if ($response->status() >= 300 && $response->status() < 400) {
-                $location = $response->header('Location');
-
-                if (! is_string($location) || $location === '') {
-                    break;
-                }
-
-                $current = self::resolveLocation($current, $location);
-                $chain[] = $current;
-
-                continue;
-            }
-
-            $chain[] = $current;
-
-            break;
-        }
-
-        return array_values(array_unique($chain));
-    }
-
     private static function resolveLocation(string $current, string $location): string
     {
         if (str_starts_with($location, '/')) {
@@ -224,7 +261,7 @@ class GoogleMapsUrlParser
         return $location;
     }
 
-    private static function httpClient(): \Illuminate\Http\Client\PendingRequest
+    private static function httpClient(): PendingRequest
     {
         $client = Http::timeout(10)->withOptions(['allow_redirects' => false]);
 

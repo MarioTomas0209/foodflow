@@ -131,6 +131,12 @@ export function parseGoogleMapsUrl(input: string): ParsedCoords | null {
         return coordsFromPair(Number(placeMatch[1]), Number(placeMatch[2]));
     }
 
+    const altPlaceMatch = url.href.match(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/);
+
+    if (altPlaceMatch) {
+        return coordsFromPair(Number(altPlaceMatch[2]), Number(altPlaceMatch[1]));
+    }
+
     const atMatch = url.pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
 
     if (atMatch) {
@@ -176,8 +182,32 @@ export function isGoogleMapsShareUrl(input: string): boolean {
     }
 }
 
+export function normalizeGoogleMapsShareUrl(input: string): string {
+    const extracted = extractGoogleMapsUrl(input);
+
+    if (!extracted) {
+        return '';
+    }
+
+    try {
+        const url = new URL(/^https?:\/\//i.test(extracted) ? extracted : `https://${extracted}`);
+        const host = url.hostname.toLowerCase();
+
+        if (host === 'maps.app.goo.gl' || host === 'goo.gl') {
+            url.search = '';
+            url.hash = '';
+
+            return url.toString();
+        }
+    } catch {
+        // Keep the extracted value when normalization fails.
+    }
+
+    return extracted;
+}
+
 export async function resolveGoogleMapsUrl(input: string, endpoint: string): Promise<ResolvedMapsLink | null> {
-    const trimmed = extractGoogleMapsUrl(input);
+    const trimmed = normalizeGoogleMapsShareUrl(input);
 
     if (!trimmed) {
         return null;
